@@ -1,0 +1,2321 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _kLang = 'app.lang'; // language code
+
+// Extensibil: adaugă noi coduri aici când vrei alte limbi
+enum AppLang { ro, en, fr, de, it, es, pt, hu, pl, tr, ru, uk, bg }
+
+extension AppLangCode on AppLang {
+  String get code => switch (this) {
+        AppLang.ro => 'ro',
+        AppLang.en => 'en',
+        AppLang.fr => 'fr',
+        AppLang.de => 'de',
+        AppLang.it => 'it',
+        AppLang.es => 'es',
+        AppLang.pt => 'pt',
+        AppLang.hu => 'hu',
+        AppLang.pl => 'pl',
+        AppLang.tr => 'tr',
+        AppLang.ru => 'ru',
+        AppLang.uk => 'uk',
+        AppLang.bg => 'bg',
+      };
+
+  static AppLang fromCode(String? code) {
+    switch (code) {
+      case 'fr':
+        return AppLang.fr;
+      case 'de':
+        return AppLang.de;
+      case 'it':
+        return AppLang.it;
+      case 'es':
+        return AppLang.es;
+      case 'pt':
+        return AppLang.pt;
+      case 'hu':
+        return AppLang.hu;
+      case 'pl':
+        return AppLang.pl;
+      case 'tr':
+        return AppLang.tr;
+      case 'ru':
+        return AppLang.ru;
+      case 'uk':
+        return AppLang.uk;
+      case 'bg':
+        return AppLang.bg;
+      case 'ro':
+        return AppLang.ro;
+      case 'en':
+      default:
+        return AppLang.en;
+    }
+  }
+}
+
+class LocaleController extends StateNotifier<AppLang> {
+  LocaleController() : super(AppLang.en) {
+    _load();
+  }
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    state = AppLangCode.fromCode(p.getString(_kLang));
+  }
+  Future<void> set(AppLang lang) async {
+    state = lang;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kLang, lang.code);
+  }
+}
+
+final localeProvider = StateNotifierProvider<LocaleController, AppLang>(
+  (ref) => LocaleController(),
+);
+
+/// ========= Dicționar multilingv =========
+/// Fiecare cheie are un map <langCode, text>. Fallback: EN, apoi cheia.
+class _L10nDict {
+  static const Map<String, Map<String, String>> data = {
+    // ===== Global =====
+    'language': {
+      'ro': 'Limbă',
+      'en': 'Language',
+      'fr': 'Langue',
+      'de': 'Sprache',
+      'it': 'Lingua',
+      'es': 'Idioma',
+      'pt': 'Idioma',
+      'hu': 'Nyelv',
+      'pl': 'Język',
+      'tr': 'Dil',
+      'ru': 'Язык',
+      'uk': 'Мова',
+      'bg': 'Език',
+    },
+    'romanian': {
+      'ro': 'Română',
+      'en': 'Romanian',
+      'fr': 'Roumain',
+      'de': 'Rumänisch',
+      'it': 'Rumeno',
+      'es': 'Rumano',
+      'pt': 'Romeno',
+      'hu': 'Román',
+      'pl': 'Rumuński',
+      'tr': 'Rumence',
+      'ru': 'Румынский',
+      'uk': 'Румунська',
+      'bg': 'Румънски',
+    },
+    'english': {
+      'ro': 'English',
+      'en': 'English',
+      'fr': 'Anglais',
+      'de': 'Englisch',
+      'it': 'Inglese',
+      'es': 'Inglés',
+      'pt': 'Inglês',
+      'hu': 'Angol',
+      'pl': 'Angielski',
+      'tr': 'İngilizce',
+      'ru': 'Английский',
+      'uk': 'Англійська',
+      'bg': 'Английски',
+    },
+
+    // ===== Settings =====
+    'settingsTitle': {
+      'ro': 'Setări',
+      'en': 'Settings',
+      'fr': 'Paramètres',
+      'de': 'Einstellungen',
+      'it': 'Impostazioni',
+      'es': 'Ajustes',
+      'pt': 'Configurações',
+      'hu': 'Beállítások',
+      'pl': 'Ustawienia',
+      'tr': 'Ayarlar',
+      'ru': 'Настройки',
+      'uk': 'Налаштування',
+      'bg': 'Настройки',
+    },
+    'deviceSettings': {
+      'ro': 'Setări dispozitiv',
+      'en': 'Device settings',
+      'fr': 'Paramètres de l’appareil',
+      'de': 'Geräteeinstellungen',
+      'it': 'Impostazioni dispositivo',
+      'es': 'Ajustes del dispositivo',
+      'pt': 'Configurações do dispositivo',
+      'hu': 'Eszközbeállítások',
+      'pl': 'Ustawienia urządzenia',
+      'tr': 'Cihaz ayarları',
+      'ru': 'Настройки устройства',
+      'uk': 'Налаштування пристрою',
+      'bg': 'Настройки на устройството',
+    },
+    'adapterBLE': {
+      'ro': 'Adaptor BLE',
+      'en': 'BLE adapter',
+      'fr': 'Adaptateur BLE',
+      'de': 'BLE-Adapter',
+      'it': 'Adattatore BLE',
+      'es': 'Adaptador BLE',
+      'pt': 'Adaptador BLE',
+      'hu': 'BLE adapter',
+      'pl': 'Adapter BLE',
+      'tr': 'BLE adaptörü',
+      'ru': 'Адаптер BLE',
+      'uk': 'Адаптер BLE',
+      'bg': 'BLE адаптер',
+    },
+    'adapterSDK': {
+      'ro': 'Adaptor SDK',
+      'en': 'SDK adapter',
+      'fr': 'Adaptateur SDK',
+      'de': 'SDK-Adapter',
+      'it': 'Adattatore SDK',
+      'es': 'Adaptador SDK',
+      'pt': 'Adaptador SDK',
+      'hu': 'SDK adapter',
+      'pl': 'Adapter SDK',
+      'tr': 'SDK adaptörü',
+      'ru': 'Адаптер SDK',
+      'uk': 'Адаптер SDK',
+      'bg': 'SDK адаптер',
+    },
+    'autoReconnect': {
+      'ro': 'Auto-reconnect',
+      'en': 'Auto-reconnect',
+      'fr': 'Reconnexion auto',
+      'de': 'Auto-Wiederverbinden',
+      'it': 'Riconnessione automatica',
+      'es': 'Reconexión automática',
+      'pt': 'Reconexão automática',
+      'hu': 'Automatikus újracsatl.',
+      'pl': 'Automatyczne pon. łączenie',
+      'tr': 'Otomatik yeniden bağlan',
+      'ru': 'Автоподключение',
+      'uk': 'Автопідключення',
+      'bg': 'Автоматично повторно свързване',
+    },
+    'startHROnOpen': {
+      'ro': 'Pornește HR live la deschiderea paginii',
+      'en': 'Start HR live when opening page',
+      'fr': 'Démarrer FC en direct à l’ouverture',
+      'de': 'Puls-Live beim Öffnen starten',
+      'it': 'Avvia FC live all’apertura',
+      'es': 'Iniciar FC en vivo al abrir',
+      'pt': 'Iniciar FC ao abrir',
+      'hu': 'Pulzus élő indítás megnyitáskor',
+      'pl': 'Uruchom puls na żywo przy otwarciu',
+      'tr': 'Sayfa açılınca nabız yayını',
+      'ru': 'Запуск ЧСС при открытии',
+      'uk': 'Запуск ЧСС під час відкриття',
+      'bg': 'Стартирай пулс при отваряне',
+    },
+    'pollIntervalSec': {
+      'ro': 'Interval citire (sec)',
+      'en': 'Poll interval (sec)',
+      'fr': 'Intervalle de lecture (s)',
+      'de': 'Abfrageintervall (s)',
+      'it': 'Intervallo lettura (s)',
+      'es': 'Intervalo de sondeo (s)',
+      'pt': 'Intervalo de leitura (s)',
+      'hu': 'Lekérdezési idő (mp)',
+      'pl': 'Interwał odpytywania (s)',
+      'tr': 'Anket aralığı (sn)',
+      'ru': 'Интервал опроса (с)',
+      'uk': 'Інтервал опитування (с)',
+      'bg': 'Интервал на четене (сек)',
+    },
+    'userProfile': {
+      'ro': 'Profil utilizator',
+      'en': 'User profile',
+      'fr': 'Profil utilisateur',
+      'de': 'Benutzerprofil',
+      'it': 'Profilo utente',
+      'es': 'Perfil de usuario',
+      'pt': 'Perfil do usuário',
+      'hu': 'Felhasználói profil',
+      'pl': 'Profil użytkownika',
+      'tr': 'Kullanıcı profili',
+      'ru': 'Профиль пользователя',
+      'uk': 'Профіль користувача',
+      'bg': 'Профил на потребителя',
+    },
+    'fullName': {
+      'ro': 'Nume complet',
+      'en': 'Full name',
+      'fr': 'Nom complet',
+      'de': 'Vollständiger Name',
+      'it': 'Nome completo',
+      'es': 'Nombre completo',
+      'pt': 'Nome completo',
+      'hu': 'Teljes név',
+      'pl': 'Imię și nazwisko',
+      'tr': 'Tam ad',
+      'ru': 'Полное имя',
+      'uk': 'Повне ім’я',
+      'bg': 'Пълно име',
+    },
+    'ageYears': {
+      'ro': 'Vârstă (ani)',
+      'en': 'Age (years)',
+      'fr': 'Âge (ans)',
+      'de': 'Alter (Jahre)',
+      'it': 'Età (anni)',
+      'es': 'Edad (años)',
+      'pt': 'Idade (anos)',
+      'hu': 'Életkor (év)',
+      'pl': 'Wiek (lata)',
+      'tr': 'Yaş (yıl)',
+      'ru': 'Возраст (лет)',
+      'uk': 'Вік (років)',
+      'bg': 'Възраст (години)',
+    },
+    'weightKg': {
+      'ro': 'Greutate (kg)',
+      'en': 'Weight (kg)',
+      'fr': 'Poids (kg)',
+      'de': 'Gewicht (kg)',
+      'it': 'Peso (kg)',
+      'es': 'Peso (kg)',
+      'pt': 'Peso (kg)',
+      'hu': 'Súly (kg)',
+      'pl': 'Waga (kg)',
+      'tr': 'Kilo (kg)',
+      'ru': 'Вес (кг)',
+      'uk': 'Вага (кг)',
+      'bg': 'Тегло (кг)',
+    },
+    'heightCm': {
+      'ro': 'Înălțime (cm)',
+      'en': 'Height (cm)',
+      'fr': 'Taille (cm)',
+      'de': 'Größe (cm)',
+      'it': 'Altezza (cm)',
+      'es': 'Altura (cm)',
+      'pt': 'Altura (cm)',
+      'hu': 'Magasság (cm)',
+      'pl': 'Wzrost (cm)',
+      'tr': 'Boy (cm)',
+      'ru': 'Рост (см)',
+      'uk': 'Зріст (см)',
+      'bg': 'Ръст (см)',
+    },
+    'emergencyPhone': {
+      'ro': 'Telefon contact (urgențe)',
+      'en': 'Emergency contact phone',
+      'fr': 'Téléphone d’urgence',
+      'de': 'Notfalltelefon',
+      'it': 'Telefono di emergenza',
+      'es': 'Teléfono de emergencia',
+      'pt': 'Telefone de emergência',
+      'hu': 'Sürgősségi telefonszám',
+      'pl': 'Telefon alarmowy',
+      'tr': 'Acil iletişim telefonu',
+      'ru': 'Телефон экстренной связи',
+      'uk': 'Телефон для екстреного зв’язку',
+      'bg': 'Телефон за спешен контакт',
+    },
+    'saveProfile': {
+      'ro': 'Salvează profil',
+      'en': 'Save profile',
+      'fr': 'Enregistrer le profil',
+      'de': 'Profil speichern',
+      'it': 'Salva profilo',
+      'es': 'Guardar perfil',
+      'pt': 'Salvar profil',
+      'hu': 'Profil mentése',
+      'pl': 'Zapisz profil',
+      'tr': 'Profili kaydet',
+      'ru': 'Сохранить профиль',
+      'uk': 'Зберегти профіль',
+      'bg': 'Запази профила',
+    },
+    'savedLocally': {
+      'ro': 'Datele sunt salvate local pe dispozitiv (SharedPreferences).',
+      'en': 'Data is stored locally on the device (SharedPreferences).',
+      'fr': 'Les données sont stockées localement (SharedPreferences).',
+      'de': 'Daten werden lokal gespeichert (SharedPreferences).',
+      'it': 'I dati sono salvati localmente (SharedPreferences).',
+      'es': 'Los datos se guardan localmente (SharedPreferences).',
+      'pt': 'Os dados são armazenados localmente (SharedPreferences).',
+      'hu': 'Adatok helyben tárolva (SharedPreferences).',
+      'pl': 'Dane są zapisywane lokalnie (SharedPreferences).',
+      'tr': 'Veriler yerelde saklanır (SharedPreferences).',
+      'ru': 'Данные хранятся локально (SharedPreferences).',
+      'uk': 'Дані зберігаються локально (SharedPreferences).',
+      'bg': 'Данните се съхраняват локално (SharedPreferences).',
+    },
+    'requiredField': {
+      'ro': 'Câmp obligatoriu',
+      'en': 'Required field',
+      'fr': 'Champ obligatoire',
+      'de': 'Pflichtfeld',
+      'it': 'Campo obbligatorio',
+      'es': 'Campo obligatorio',
+      'pt': 'Campo obrigatório',
+      'hu': 'Kötelező mező',
+      'pl': 'Pole wymagane',
+      'tr': 'Zorunlu alan',
+      'ru': 'Обязательное поле',
+      'uk': 'Обов’язкове поле',
+      'bg': 'Задължително поле',
+    },
+    'invalidPhone': {
+      'ro': 'Număr invalid',
+      'en': 'Invalid phone',
+      'fr': 'Numéro invalide',
+      'de': 'Ungültige Nummer',
+      'it': 'Numero non valido',
+      'es': 'Número no válido',
+      'pt': 'Número inválido',
+      'hu': 'Érvénytelen szám',
+      'pl': 'Nieprawidłowy numer',
+      'tr': 'Geçersiz numara',
+      'ru': 'Неверный номер',
+      'uk': 'Некоректний номер',
+      'bg': 'Невалиден номер',
+    },
+    'savedSnack': {
+      'ro': 'Profil salvat',
+      'en': 'Profile saved',
+      'fr': 'Profil enregistré',
+      'de': 'Profil gespeichert',
+      'it': 'Profilo salvato',
+      'es': 'Perfil guardado',
+      'pt': 'Perfil salvo',
+      'hu': 'Profil elmentve',
+      'pl': 'Profil zapisany',
+      'tr': 'Profil kaydedildi',
+      'ru': 'Профиль сохранен',
+      'uk': 'Профіль збережено',
+      'bg': 'Профилът е запазен',
+    },
+
+    // ===== Activity =====
+    'activityType': {
+      'ro': 'Tip activitate',
+      'en': 'Activity type',
+      'fr': 'Type d’activit\u00e9',
+      'de': 'Aktivit\u00e4tstyp',
+      'it': 'Tipo di attivit\u00e0',
+      'es': 'Tipo de actividad',
+      'pt': 'Tipo de atividade',
+      'hu': 'Aktivit\u00e1s t\u00edpusa',
+      'pl': 'Typ aktywno\u015bci',
+      'tr': 'Aktivite t\u00fcr\u00fc',
+      'ru': 'Тип активности',
+      'uk': 'Тип активності',
+      'bg': 'Тип активност',
+    },
+    'sedentary': {
+      'ro': 'Sedentară',
+      'en': 'Sedentary',
+      'fr': 'Sédentaire',
+      'de': 'Sitzend',
+      'it': 'Sedentaria',
+      'es': 'Sedentaria',
+      'pt': 'Sedentária',
+      'hu': 'Ülő',
+      'pl': 'Siedzący',
+      'tr': 'Hareketsiz',
+      'ru': 'Сидячая',
+      'uk': 'Малорухлива',
+      'bg': 'Заседнала',
+    },
+    'moderate': {
+      'ro': 'Moderată',
+      'en': 'Moderate',
+      'fr': 'Modérée',
+      'de': 'Mittel',
+      'it': 'Moderata',
+      'es': 'Moderada',
+      'pt': 'Moderada',
+      'hu': 'Mérsékelt',
+      'pl': 'Umiarkowana',
+      'tr': 'Orta',
+      'ru': 'Умеренная',
+      'uk': 'Помірна',
+      'bg': 'Умерена',
+    },
+    'active': {
+      'ro': 'Activă',
+      'en': 'Active',
+      'fr': 'Active',
+      'de': 'Aktiv',
+      'it': 'Attiva',
+      'es': 'Activa',
+      'pt': 'Ativa',
+      'hu': 'Aktív',
+      'pl': 'Aktywna',
+      'tr': 'Aktif',
+      'ru': 'Активная',
+      'uk': 'Активна',
+      'bg': 'Активна',
+    },
+
+    // ===== Diagnostics =====
+    'diagnosticsTitle': {
+      'ro': 'Diagnostic',
+      'en': 'Diagnostics',
+      'fr': 'Diagnostique',
+      'de': 'Diagnose',
+      'it': 'Diagnostica',
+      'es': 'Diagnóstico',
+      'pt': 'Diagnóstico',
+      'hu': 'Diagnosztika',
+      'pl': 'Diagnostyka',
+      'tr': 'Tanılama',
+      'ru': 'Диагностика',
+      'uk': 'Діагностика',
+      'bg': 'Диагностика',
+    },
+    'refresh': {
+      'ro': 'Reîncarcă',
+      'en': 'Refresh',
+      'fr': 'Rafraîchir',
+      'de': 'Aktualisieren',
+      'it': 'Aggiorna',
+      'es': 'Actualizar',
+      'pt': 'Atualizar',
+      'hu': 'Frissítés',
+      'pl': 'Odśwież',
+      'tr': 'Yenile',
+      'ru': 'Обновить',
+      'uk': 'Оновити',
+      'bg': 'Опресни',
+    },
+
+    // ===== Device Details / vitals =====
+    'device': {
+      'ro': 'Dispozitiv',
+      'en': 'Device',
+      'fr': 'Appareil',
+      'de': 'Gerät',
+      'it': 'Dispositivo',
+      'es': 'Dispositivo',
+      'pt': 'Dispositivo',
+      'hu': 'Eszköz',
+      'pl': 'Urządzenie',
+      'tr': 'Cihaz',
+      'ru': 'Устройство',
+      'uk': 'Пристрій',
+      'bg': 'Устройство',
+    },
+    'hr': {
+      'ro': 'Puls',
+      'en': 'Heart rate',
+      'fr': 'Fréquence cardiaque',
+      'de': 'Herzfrequenz',
+      'it': 'Frequenza cardiaca',
+      'es': 'Frecuencia cardíaca',
+      'pt': 'Frequência cardíaca',
+      'hu': 'Pulzus',
+      'pl': 'Tętno',
+      'tr': 'Nabız',
+      'ru': 'Пульс',
+      'uk': 'Пульс',
+      'bg': 'Пулс',
+    },
+    'bpm': {
+      'ro': 'bpm',
+      'en': 'bpm',
+      'fr': 'bpm',
+      'de': 'bpm',
+      'it': 'bpm',
+      'es': 'lpm',
+      'pt': 'bpm',
+      'hu': 'bpm',
+      'pl': 'ud./min',
+      'tr': 'atım/dk',
+      'ru': 'уд/мин',
+      'uk': 'уд/хв',
+      'bg': 'уд/мин',
+    },
+    'spo2': {
+      'ro': 'SpO₂',
+      'en': 'SpO₂',
+      'fr': 'SpO₂',
+      'de': 'SpO₂',
+      'it': 'SpO₂',
+      'es': 'SpO₂',
+      'pt': 'SpO₂',
+      'hu': 'SpO₂',
+      'pl': 'SpO₂',
+      'tr': 'SpO₂',
+      'ru': 'SpO₂',
+      'uk': 'SpO₂',
+      'bg': 'SpO₂',
+    },
+    'percent': {
+      'ro': '%',
+      'en': '%',
+      'fr': '%',
+      'de': '%',
+      'it': '%',
+      'es': '%',
+      'pt': '%',
+      'hu': '%',
+      'pl': '%',
+      'tr': '%',
+      'ru': '%',
+      'uk': '%',
+      'bg': '%',
+    },
+    'temperature': {
+      'ro': 'Temp.',
+      'en': 'Temp.',
+      'fr': 'Temp.',
+      'de': 'Temp.',
+      'it': 'Temp.',
+      'es': 'Temp.',
+      'pt': 'Temp.',
+      'hu': 'Hőm.',
+      'pl': 'Temp.',
+      'tr': 'Sıcak.',
+      'ru': 'Темп.',
+      'uk': 'Темп.',
+      'bg': 'Темп.',
+    },
+    'degC': {
+      'ro': '°C',
+      'en': '°C',
+      'fr': '°C',
+      'de': '°C',
+      'it': '°C',
+      'es': '°C',
+      'pt': '°C',
+      'hu': '°C',
+      'pl': '°C',
+      'tr': '°C',
+      'ru': '°C',
+      'uk': '°C',
+      'bg': '°C',
+    },
+    'steps': {
+      'ro': 'Pași',
+      'en': 'Steps',
+      'fr': 'Pas',
+      'de': 'Schritte',
+      'it': 'Passi',
+      'es': 'Pasos',
+      'pt': 'Passos',
+      'hu': 'Lépések',
+      'pl': 'Kroki',
+      'tr': 'Adım',
+      'ru': 'Шаги',
+      'uk': 'Кроки',
+      'bg': 'Крачки',
+    },
+    'respiration': {
+      'ro': 'Respirație',
+      'en': 'Respiration',
+      'fr': 'Respiration',
+      'de': 'Atmung',
+      'it': 'Respirazione',
+      'es': 'Respiración',
+      'pt': 'Respiração',
+      'hu': 'Légzés',
+      'pl': 'Oddech',
+      'tr': 'Solunum',
+      'ru': 'Дыхание',
+      'uk': 'Дихання',
+      'bg': 'Дишане',
+    },
+    'rpm': {
+      'ro': 'resp/min',
+      'en': 'resp/min',
+      'fr': 'resp/min',
+      'de': 'Atemz./min',
+      'it': 'resp/min',
+      'es': 'resp/min',
+      'pt': 'resp/min',
+      'hu': 'légz./perc',
+      'pl': 'oddech/min',
+      'tr': 'sol./dk',
+      'ru': 'вдох/мин',
+      'uk': 'дих/хв',
+      'bg': 'д./мин',
+    },
+    'hrv': {
+      'ro': 'HRV',
+      'en': 'HRV',
+      'fr': 'VRC',
+      'de': 'HRV',
+      'it': 'HRV',
+      'es': 'VFC',
+      'pt': 'VFC',
+      'hu': 'HRV',
+      'pl': 'HRV',
+      'tr': 'HRV',
+      'ru': 'HRV',
+      'uk': 'HRV',
+      'bg': 'HRV',
+    },
+    'ms': {
+      'ro': 'ms',
+      'en': 'ms',
+      'fr': 'ms',
+      'de': 'ms',
+      'it': 'ms',
+      'es': 'ms',
+      'pt': 'ms',
+      'hu': 'ms',
+      'pl': 'ms',
+      'tr': 'ms',
+      'ru': 'мс',
+      'uk': 'мс',
+      'bg': 'ms',
+    },
+    'bloodPressure': {
+      'ro': 'Tensiune',
+      'en': 'Blood P.',
+      'fr': 'TA',
+      'de': 'RR',
+      'it': 'PA',
+      'es': 'PA',
+      'pt': 'PA',
+      'hu': 'Vérnyomás',
+      'pl': 'Ciśnienie',
+      'tr': 'Tansiyon',
+      'ru': 'Давление',
+      'uk': 'Тиск',
+      'bg': 'Кръвно',
+    },
+    'mmHg': {
+      'ro': 'mmHg',
+      'en': 'mmHg',
+      'fr': 'mmHg',
+      'de': 'mmHg',
+      'it': 'mmHg',
+      'es': 'mmHg',
+      'pt': 'mmHg',
+      'hu': 'mmHg',
+      'pl': 'mmHg',
+      'tr': 'mmHg',
+      'ru': 'мм рт. ст.',
+      'uk': 'мм рт. ст.',
+      'bg': 'mmHg',
+    },
+    'battery': {
+      'ro': 'Baterie',
+      'en': 'Battery',
+      'fr': 'Batterie',
+      'de': 'Akku',
+      'it': 'Batteria',
+      'es': 'Batería',
+      'pt': 'Bateria',
+      'hu': 'Akkumulátor',
+      'pl': 'Bateria',
+      'tr': 'Pil',
+      'ru': 'Батарея',
+      'uk': 'Батарея',
+      'bg': 'Батерия',
+    },
+
+    // ===== Home (scan/connect) =====
+    'homeTitle': {
+      'ro': 'AGP HUB',
+      'en': 'AGP HUB',
+      'fr': 'AGP HUB',
+      'de': 'AGP HUB',
+      'it': 'AGP HUB',
+      'es': 'AGP HUB',
+      'pt': 'AGP HUB',
+      'hu': 'AGP HUB',
+      'pl': 'AGP HUB',
+      'tr': 'AGP HUB',
+      'ru': 'AGP HUB',
+      'uk': 'AGP HUB',
+      'bg': 'AGP HUB',
+    },
+    'startScan': {
+      'ro': 'Scanează',
+      'en': 'Scan',
+      'fr': 'Scanner',
+      'de': 'Scannen',
+      'it': 'Scansione',
+      'es': 'Escanear',
+      'pt': 'Procurar',
+      'hu': 'Keresés',
+      'pl': 'Skanuj',
+      'tr': 'Tara',
+      'ru': 'Сканировать',
+      'uk': 'Сканувати',
+      'bg': 'Сканирай',
+    },
+    'stopScan': {
+      'ro': 'Oprește scanarea',
+      'en': 'Stop scan',
+      'fr': 'Arrêter',
+      'de': 'Scan stoppen',
+      'it': 'Interrompi',
+      'es': 'Detener',
+      'pt': 'Parar',
+      'hu': 'Leállít',
+      'pl': 'Zatrzymaj',
+      'tr': 'Taramayı durdur',
+      'ru': 'Остановить',
+      'uk': 'Зупинити',
+      'bg': 'Спри',
+    },
+    'connect': {
+      'ro': 'Conectează',
+      'en': 'Connect',
+      'fr': 'Connecter',
+      'de': 'Verbinden',
+      'it': 'Connetti',
+      'es': 'Conectar',
+      'pt': 'Conectar',
+      'hu': 'Csatlakozás',
+      'pl': 'Połącz',
+      'tr': 'Bağlan',
+      'ru': 'Подключить',
+      'uk': 'Під’єднати',
+      'bg': 'Свържи',
+    },
+    'disconnect': {
+      'ro': 'Deconectează',
+      'en': 'Disconnect',
+      'fr': 'Déconnecter',
+      'de': 'Trennen',
+      'it': 'Disconnetti',
+      'es': 'Desconectar',
+      'pt': 'Desconectar',
+      'hu': 'Leválasztás',
+      'pl': 'Rozłącz',
+      'tr': 'Bağlantıyı kes',
+      'ru': 'Отключить',
+      'uk': 'Від’єднати',
+      'bg': 'Прекъсни',
+    },
+    'scanning': {
+      'ro': 'Se scanează...',
+      'en': 'Scanning...',
+      'fr': 'Analyse...',
+      'de': 'Scannen...',
+      'it': 'Scansione...',
+      'es': 'Escaneando...',
+      'pt': 'A procurar...',
+      'hu': 'Keresés...',
+      'pl': 'Skanowanie...',
+      'tr': 'Taranıyor...',
+      'ru': 'Сканирование...',
+      'uk': 'Сканування...',
+      'bg': 'Сканиране...',
+    },
+    'noDevices': {
+      'ro': 'Niciun dispozitiv găsit',
+      'en': 'No devices found',
+      'fr': 'Aucun appareil trouvé',
+      'de': 'Keine Geräte gefunden',
+      'it': 'Nessun dispositivo trovato',
+      'es': 'No se encontraron dispositivos',
+      'pt': 'Nenhum dispositivo encontrado',
+      'hu': 'Nem található eszköz',
+      'pl': 'Nie znaleziono urządzeń',
+      'tr': 'Cihaz bulunamadı',
+      'ru': 'Устройства не найдены',
+      'uk': 'Пристроїв не знайдено',
+      'bg': 'Няма намерени устройства',
+    },
+    'bluetoothOff': {
+      'ro': 'Bluetooth dezactivat',
+      'en': 'Bluetooth is off',
+      'fr': 'Bluetooth désactivé',
+      'de': 'Bluetooth aus',
+      'it': 'Bluetooth disattivato',
+      'es': 'Bluetooth desactivado',
+      'pt': 'Bluetooth desligado',
+      'hu': 'Bluetooth kikapcsolva',
+      'pl': 'Bluetooth wyłączony',
+      'tr': 'Bluetooth kapalı',
+      'ru': 'Bluetooth выключен',
+      'uk': 'Bluetooth вимкнено',
+      'bg': 'Bluetooth е изключен',
+    },
+    'locationOff': {
+      'ro': 'Localizarea dezactivată',
+      'en': 'Location is off',
+      'fr': 'Localisation désactivée',
+      'de': 'Standort aus',
+      'it': 'Posizione disattivata',
+      'es': 'Ubicación desactivada',
+      'pt': 'Localização desativada',
+      'hu': 'Helymeghatározás kikapcsolva',
+      'pl': 'Lokalizacja wyłączona',
+      'tr': 'Konum kapalı',
+      'ru': 'Геолокация выключена',
+      'uk': 'Локація вимкнена',
+      'bg': 'Локацията е изключена',
+    },
+    'openSettings': {
+      'ro': 'Deschide setări',
+      'en': 'Open settings',
+      'fr': 'Ouvrir paramètres',
+      'de': 'Einstellungen öffnen',
+      'it': 'Apri impostazioni',
+      'es': 'Abrir ajustes',
+      'pt': 'Abrir configurações',
+      'hu': 'Beállítások megnyitása',
+      'pl': 'Otwórz ustawienia',
+      'tr': 'Ayarları aç',
+      'ru': 'Открыть настройки',
+      'uk': 'Відкрити налаштування',
+      'bg': 'Отвори настройки',
+    },
+    'connectedTo': {
+      'ro': 'Conectat la',
+      'en': 'Connected to',
+      'fr': 'Connecté à',
+      'de': 'Verbunden mit',
+      'it': 'Connesso a',
+      'es': 'Conectado a',
+      'pt': 'Conectado a',
+      'hu': 'Csatlakozva:',
+      'pl': 'Połączono z',
+      'tr': 'Bağlı:',
+      'ru': 'Подключено к',
+      'uk': 'Під’єднано до',
+      'bg': 'Свързан с',
+    },
+    'rssi': {
+      'ro': 'RSSI',
+      'en': 'RSSI',
+      'fr': 'RSSI',
+      'de': 'RSSI',
+      'it': 'RSSI',
+      'es': 'RSSI',
+      'pt': 'RSSI',
+      'hu': 'RSSI',
+      'pl': 'RSSI',
+      'tr': 'RSSI',
+      'ru': 'RSSI',
+      'uk': 'RSSI',
+      'bg': 'RSSI',
+    },
+
+    // Status banner + mesaje
+    'connected': {
+      'ro': 'Conectat',
+      'en': 'Connected',
+      'fr': 'Connecté',
+      'de': 'Verbunden',
+      'it': 'Connesso',
+      'es': 'Conectado',
+      'pt': 'Conectado',
+      'hu': 'Csatlakoztatva',
+      'pl': 'Połączono',
+      'tr': 'Bağlandı',
+      'ru': 'Подключено',
+      'uk': 'Під’єднано',
+      'bg': 'Свързан',
+    },
+    'selected': {
+      'ro': 'Selectat',
+      'en': 'Selected',
+      'fr': 'Sélectionné',
+      'de': 'Ausgewählt',
+      'it': 'Selezionato',
+      'es': 'Seleccionado',
+      'pt': 'Selecionado',
+      'hu': 'Kiválasztva',
+      'pl': 'Wybrano',
+      'tr': 'Seçildi',
+      'ru': 'Выбрано',
+      'uk': 'Вибрано',
+      'bg': 'Избрано',
+    },
+    'connectedActive': {
+      'ro': 'Conectat activ',
+      'en': 'Actively connected',
+      'fr': 'Connexion active',
+      'de': 'Aktiv verbunden',
+      'it': 'Connesso attivamente',
+      'es': 'Conectado activamente',
+      'pt': 'Conectado ativamente',
+      'hu': 'Aktív kapcsolat',
+      'pl': 'Połączono aktywnie',
+      'tr': 'Aktif bağlı',
+      'ru': 'Активное подключение',
+      'uk': 'Активне з’єднання',
+      'bg': 'Активно свързан',
+    },
+    'realtimeMonitoring': {
+      'ro': 'Monitorizare în timp real',
+      'en': 'Real-time monitoring',
+      'fr': 'Suivi en temps réel',
+      'de': 'Echtzeitüberwachung',
+      'it': 'Monitoraggio in tempo reale',
+      'es': 'Monitoreo en tiempo real',
+      'pt': 'Monitorização em tempo real',
+      'hu': 'Valós idejű megfigyelés',
+      'pl': 'Monitorowanie w czasie rzeczywistym',
+      'tr': 'Gerçek zamanlı izleme',
+      'ru': 'Мониторинг в реальном времени',
+      'uk': 'Моніторинг у реальному часі',
+      'bg': 'Наблюдение в реално време',
+    },
+
+    // Erori/Snack
+    'errorScan': {
+      'ro': 'Eroare la căutare.',
+      'en': 'Scan error.',
+      'fr': 'Erreur de scan.',
+      'de': 'Scanfehler.',
+      'it': 'Errore di scansione.',
+      'es': 'Error de escaneo.',
+      'pt': 'Erro na varredura.',
+      'hu': 'Keresési hiba.',
+      'pl': 'Błąd skanowania.',
+      'tr': 'Tarama hatası.',
+      'ru': 'Ошибка сканирования.',
+      'uk': 'Помилка сканування.',
+      'bg': 'Грешка при сканиране.',
+    },
+    'errorConnect': {
+      'ro': 'Eroare la conectare.',
+      'en': 'Connection error.',
+      'fr': 'Erreur de connexion.',
+      'de': 'Verbindungsfehler.',
+      'it': 'Errore di connessione.',
+      'es': 'Error de conexión.',
+      'pt': 'Erro de conexão.',
+      'hu': 'Csatlakozási hiba.',
+      'pl': 'Błąd połączenia.',
+      'tr': 'Bağlantı hatası.',
+      'ru': 'Ошибка подключения.',
+      'uk': 'Помилка підключення.',
+      'bg': 'Грешка при свързване.',
+    },
+    'couldNotConnect': {
+      'ro': 'Nu s-a putut conecta.',
+      'en': 'Could not connect.',
+      'fr': 'Impossible de se connecter.',
+      'de': 'Verbindung nicht möglich.',
+      'it': 'Impossibile connettersi.',
+      'es': 'No se pudo conectar.',
+      'pt': 'Não foi possível conectar.',
+      'hu': 'Nem sikerült csatlakozni.',
+      'pl': 'Nie udało się połączyć.',
+      'tr': 'Bağlanılamadı.',
+      'ru': 'Не удалось подключиться.',
+      'uk': 'Не вдалося під’єднатися.',
+      'bg': 'Неуспешно свързване.',
+    },
+    'cannotOpenDialer': {
+      'ro': 'Nu pot deschide dialer-ul pentru {number}',
+      'en': 'Cannot open dialer for {number}',
+      'fr': 'Impossible d’ouvrir le composeur pentru {number}',
+      'de': 'Anwahl kann nicht geöffnet werden: {number}',
+      'it': 'Impossibile aprire il dialer per {number}',
+      'es': 'No se puede abrir el marcador para {number}',
+      'pt': 'Não é possível abrir o discador para {number}',
+      'hu': 'Nem nyitható tárcsázó ehhez: {number}',
+      'pl': 'Nie można otworzyć dialera dla {number}',
+      'tr': '{number} için arama açılmıyor',
+      'ru': 'Невозможно открыть набор для {number}',
+      'uk': 'Не вдається відкрити набір для {number}',
+      'bg': 'Не може да се отвори набиране за {number}',
+    },
+
+    // SOS
+    'sosButton': {
+      'ro': 'SOS — Sună la urgențe',
+      'en': 'SOS — Call emergency',
+      'fr': 'SOS — Appeler les urgences',
+      'de': 'SOS — Notruf wählen',
+      'it': 'SOS — Chiama emergenze',
+      'es': 'SOS — Llamar emergencias',
+      'pt': 'SOS — Ligar emergência',
+      'hu': 'SOS — Segélyhívás',
+      'pl': 'SOS — Zadzwoń po pomoc',
+      'tr': 'SOS — Acil arama',
+      'ru': 'SOS — Вызов экстренных служб',
+      'uk': 'SOS — Дзвінок у швидку',
+      'bg': 'SOS — Обади се на спешни',
+    },
+
+    // Settings -> Measurements & Legal
+    'measurements': {
+      'ro': 'Măsurători',
+      'en': 'Measurements',
+      'fr': 'Mesures',
+      'de': 'Messungen',
+      'it': 'Misurazioni',
+      'es': 'Mediciones',
+      'pt': 'Medições',
+      'hu': 'Mérések',
+      'pl': 'Pomiary',
+      'tr': 'Ölçümler',
+      'ru': 'Измерения',
+      'uk': 'Вимірювання',
+      'bg': 'Измервания',
+    },
+    'legalInfo': {
+      'ro': 'Legal & Info',
+      'en': 'Legal & Info',
+      'fr': 'Mentions & Infos',
+      'de': 'Rechtliches & Info',
+      'it': 'Legale e info',
+      'es': 'Legal e info',
+      'pt': 'Legal e info',
+      'hu': 'Jogi și infó',
+      'pl': 'Prawne i info',
+      'tr': 'Hukuki ve Bilgi',
+      'ru': 'Правовая информация',
+      'uk': 'Юридична інформація',
+      'bg': 'Правна информация',
+    },
+    'terms': {
+      'ro': 'Termeni și condiții',
+      'en': 'Terms & Conditions',
+      'fr': 'Termes et conditions',
+      'de': 'Allgemeine Geschäftsbedingungen',
+      'it': 'Termini e condizioni',
+      'es': 'Términos y condiciones',
+      'pt': 'Termos e condições',
+      'hu': 'Felhasználási feltételek',
+      'pl': 'Regulamin',
+      'tr': 'Şartlar ve koşullar',
+      'ru': 'Условия использования',
+      'uk': 'Умови користування',
+      'bg': 'Общи условия',
+    },
+    'aboutApp': {
+      'ro': 'Despre aplicație',
+      'en': 'About the app',
+      'fr': 'À propos',
+      'de': 'Über die App',
+      'it': "Informazioni sull'app",
+      'es': 'Acerca de la app',
+      'pt': 'Sobre o app',
+      'hu': 'Az alkalmazásról',
+      'pl': 'O aplikacji',
+      'tr': 'Uygulama hakkında',
+      'ru': 'О приложении',
+      'uk': 'Про додаток',
+      'bg': 'За приложението',
+    },
+    'nonMedicalApp': {
+      'ro': 'Aplicație NON-MEDICALĂ',
+      'en': 'NON-MEDICAL application',
+      'fr': 'Application NON MÉDICALE',
+      'de': 'NICHT MEDIZINISCHE Anwendung',
+      'it': 'Applicazione NON MEDICA',
+      'es': 'Aplicación NO MÉDICA',
+      'pt': 'Aplicativo NÃO MÉDICO',
+      'hu': 'NEM ORVOSI alkalmazás',
+      'pl': 'Aplikacja NIEMEDYCZNA',
+      'tr': 'TIBBİ OLMAYAN uygulama',
+      'ru': 'НЕ МЕДИЦИНСКОЕ приложение',
+      'uk': 'НЕ МЕДИЧНИЙ застосунок',
+      'bg': 'НЕ МЕДИЦИНСКО ПРИЛОЖЕНИЕ',
+    },
+
+    // ===== Menstrual cycle =====
+    'menstrualCycle': {
+      'ro': 'Ciclu menstrual',
+      'en': 'Menstrual cycle',
+      'fr': 'Cycle menstruel',
+      'de': 'Menstruationszyklus',
+      'it': 'Ciclo mestruale',
+      'es': 'Ciclo menstrual',
+      'pt': 'Ciclo menstrual',
+      'hu': 'Menstruációs ciklus',
+      'pl': 'Cykl menstruacyjny',
+      'tr': 'Adet döngüsü',
+      'ru': 'Менструальный цикл',
+      'uk': 'Менструальний цикл',
+      'bg': 'Менструален цикъл',
+    },
+    'menstrualSubtitle': {
+      'ro': 'Jurnal + predicții',
+      'en': 'Journal + predictions',
+      'fr': 'Journal + prévisions',
+      'de': 'Journal + Prognosen',
+      'it': 'Diario + previsioni',
+      'es': 'Diario + predicciones',
+      'pt': 'Diário + previsões',
+      'hu': 'Napló + előrejelzés',
+      'pl': 'Dziennik + prognozy',
+      'tr': 'Günlük + tahminler',
+      'ru': 'Журнал + прогнозы',
+      'uk': 'Журнал + прогнози',
+      'bg': 'Дневник + прогнози',
+    },
+
+    // Page strings
+    'menstrualTitle': {
+      'ro': 'Ciclu menstrual',
+      'en': 'Menstrual cycle',
+      'fr': 'Cycle menstruel',
+      'de': 'Menstruationszyklus',
+      'it': 'Ciclo mestruale',
+      'es': 'Ciclo menstrual',
+      'pt': 'Ciclo menstrual',
+      'hu': 'Menstruációs ciklus',
+      'pl': 'Cykl menstruacyjny',
+      'tr': 'Adet döngüsü',
+      'ru': 'Менструальный цикл',
+      'uk': 'Менструальний цикл',
+      'bg': 'Менструален цикъл',
+    },
+    'cycleTracking': {
+      'ro': 'Urmărire ciclu',
+      'en': 'Cycle tracking',
+      'fr': 'Suivi du cycle',
+      'de': 'Zyklus-Tracking',
+      'it': 'Monitoraggio ciclo',
+      'es': 'Seguimiento del ciclo',
+      'pt': 'Rastreamento do ciclo',
+      'hu': 'Ciklus-követés',
+      'pl': 'Śledzenie cyklu',
+      'tr': 'Döngü takibi',
+      'ru': 'Отслеживание цикла',
+      'uk': 'Відстеження циклу',
+      'bg': 'Проследяване на цикъла',
+    },
+    'lastPeriodDate': {
+      'ro': 'Data ultimei menstruații',
+      'en': 'Last period date',
+      'fr': 'Date des dernières règles',
+      'de': 'Datum der letzten Periode',
+      'it': 'Data dell’ultima mestruazione',
+      'es': 'Fecha de la última menstruación',
+      'pt': 'Data da última menstruação',
+      'hu': 'Utolsó menstruáció dátuma',
+      'pl': 'Data ostatniej miesiączki',
+      'tr': 'Son adet tarihi',
+      'ru': 'Дата последней менструации',
+      'uk': 'Дата останньої менструації',
+      'bg': 'Дата на последната менструация',
+    },
+    'avgCycleLen': {
+      'ro': 'Durata medie a ciclului',
+      'en': 'Average cycle length',
+      'fr': 'Durée moyenne du cycle',
+      'de': 'Durchschn. Zykluslänge',
+      'it': 'Durata media del ciclo',
+      'es': 'Duración media del ciclo',
+      'pt': 'Duração média do ciclo',
+      'hu': 'Átlagos ciklushossz',
+      'pl': 'Średnia długość cyklu',
+      'tr': 'Ortalama döngü süresi',
+      'ru': 'Средняя длительность цикла',
+      'uk': 'Середня тривалість циклу',
+      'bg': 'Средна продължителност на цикъла',
+    },
+    'avgPeriodLen': {
+      'ro': 'Durata medie a menstruației',
+      'en': 'Average period length',
+      'fr': 'Durée moyenne des règles',
+      'de': 'Durchschn. Periodendauer',
+      'it': 'Durata media del flusso',
+      'es': 'Duración media del período',
+      'pt': 'Duração média da menstruação',
+      'hu': 'Átlagos vérzés hossza',
+      'pl': 'Średnia długość miesiączki',
+      'tr': 'Ortalama adet süresi',
+      'ru': 'Средняя длительность менструации',
+      'uk': 'Середня тривалість менструації',
+      'bg': 'Средна продължителност на менструацията',
+    },
+    'days': {
+      'ro': 'zile',
+      'en': 'days',
+      'fr': 'jours',
+      'de': 'Tage',
+      'it': 'giorni',
+      'es': 'días',
+      'pt': 'dias',
+      'hu': 'nap',
+      'pl': 'dni',
+      'tr': 'gün',
+      'ru': 'дн.',
+      'uk': 'дн.',
+      'bg': 'дни',
+    },
+    'markStartToday': {
+      'ro': 'Marchează început azi',
+      'en': 'Mark start today',
+      'fr': 'Marquer le début aujourd’hui',
+      'de': 'Heute als Beginn markieren',
+      'it': 'Segna inizio oggi',
+      'es': 'Marcar inicio hoy',
+      'pt': 'Marcar início hoje',
+      'hu': 'Kezdet ma jelölése',
+      'pl': 'Oznacz początek dziś',
+      'tr': 'Başlangıcı bugün işaretle',
+      'ru': 'Отметить начало сегодня',
+      'uk': 'Позначити початок сьогодні',
+      'bg': 'Маркирай начало днес',
+    },
+    'markEndToday': {
+      'ro': 'Marchează sfârșit azi',
+      'en': 'Mark end today',
+      'fr': 'Marquer la fin aujourd’hui',
+      'de': 'Heute als Ende markieren',
+      'it': 'Segna fine oggi',
+      'es': 'Marcar fin hoy',
+      'pt': 'Marcar fim hoje',
+      'hu': 'Vége ma jelölése',
+      'pl': 'Oznacz koniec dziś',
+      'tr': 'Bitişi bugün işaretle',
+      'ru': 'Отметить конец сегодня',
+      'uk': 'Позначити кінець сьогодні',
+      'bg': 'Маркирай край днес',
+    },
+    'predictedNextPeriod': {
+      'ro': 'Următoarea menstruație (estim.)',
+      'en': 'Next period (estimated)',
+      'fr': 'Prochaines règles (estim.)',
+      'de': 'Nächste Periode (geschätzt)',
+      'it': 'Prossime mestruazioni (stima)',
+      'es': 'Próximo período (estimado)',
+      'pt': 'Próxima menstruação (estim.)',
+      'hu': 'Következő menstruáció (becslés)',
+      'pl': 'Następna miesiączka (szacunek)',
+      'tr': 'Sonraki adet (tahmini)',
+      'ru': 'Следующая менструация (оценка)',
+      'uk': 'Наступна менструація (оцінка)',
+      'bg': 'Следваща менструация (прибл.)',
+    },
+    'predictedStart': {
+      'ro': 'Început estimat',
+      'en': 'Estimated start',
+      'fr': 'Début estimé',
+      'de': 'Geschätzter Beginn',
+      'it': 'Inizio stimato',
+      'es': 'Inicio estimado',
+      'pt': 'Início estimado',
+      'hu': 'Becsült kezdet',
+      'pl': 'Szacowany początek',
+      'tr': 'Tahmini başlangıç',
+      'ru': 'Ожидаемое начало',
+      'uk': 'Очікуваний початок',
+      'bg': 'Очакван старт',
+    },
+    'predictedEnd': {
+      'ro': 'Sfârșit estimat',
+      'en': 'Estimated end',
+      'fr': 'Fin estimée',
+      'de': 'Geschätztes Ende',
+      'it': 'Fine stimata',
+      'es': 'Fin estimado',
+      'pt': 'Fim estimado',
+      'hu': 'Becsült befejezés',
+      'pl': 'Szacowany конiec',
+      'tr': 'Tahmini bitiş',
+      'ru': 'Ожидаемый конец',
+      'uk': 'Очікуваний кінець',
+      'bg': 'Очакван край',
+    },
+    'fertileWindow': {
+      'ro': 'Fereastră fertilă (aprox.)',
+      'en': 'Fertile window (approx.)',
+      'fr': 'Fenêtre fertile (approx.)',
+      'de': 'Fruchtbares Fenster (ca.)',
+      'it': 'Finestra fertile (circa)',
+      'es': 'Ventana fértil (aprox.)',
+      'pt': 'Janela fértil (aprox.)',
+      'hu': 'Termékeny időszak (kb.)',
+      'pl': 'Okno płodności (ok.)',
+      'tr': 'Doğurgan dönem (yak.)',
+      'ru': 'Фертильное окно (примерно)',
+      'uk': 'Фертильне вікно (прибл.)',
+      'bg': 'Фертилен прозорец (прибл.)',
+    },
+    'symptoms': {
+      'ro': 'Simptome',
+      'en': 'Symptoms',
+      'fr': 'Symptômes',
+      'de': 'Symptome',
+      'it': 'Sintomi',
+      'es': 'Síntomas',
+      'pt': 'Sintomas',
+      'hu': 'Tünetek',
+      'pl': 'Objawy',
+      'tr': 'Semptomlar',
+      'ru': 'Симптомы',
+      'uk': 'Симптоми',
+      'bg': 'Симптоми',
+    },
+    'notes': {
+      'ro': 'Note',
+      'en': 'Notes',
+      'fr': 'Notes',
+      'de': 'Notizen',
+      'it': 'Note',
+      'es': 'Notas',
+      'pt': 'Notas',
+      'hu': 'Jegyzetek',
+      'pl': 'Notatki',
+      'tr': 'Notlar',
+      'ru': 'Заметки',
+      'uk': 'Нотатки',
+      'bg': 'Бележки',
+    },
+
+    // Symptoms chips
+    's_cramps': {
+      'ro': 'Crampe',
+      'en': 'Cramps',
+      'fr': 'Crampes',
+      'de': 'Krämpfe',
+      'it': 'Crampi',
+      'es': 'Calambres',
+      'pt': 'Cólicas',
+      'hu': 'Görcsök',
+      'pl': 'Skurcze',
+      'tr': 'Kramplar',
+      'ru': 'Спазмы',
+      'uk': 'Спазми',
+      'bg': 'Крампи',
+    },
+    's_headache': {
+      'ro': 'Durere de cap',
+      'en': 'Headache',
+      'fr': 'Mal de tête',
+      'de': 'Kopfschmerz',
+      'it': 'Mal di testa',
+      'es': 'Dolor de cabeza',
+      'pt': 'Dor de cabeça',
+      'hu': 'Fejfájás',
+      'pl': 'Ból głowy',
+      'tr': 'Baş ağrısı',
+      'ru': 'Головная боль',
+      'uk': 'Головний біль',
+      'bg': 'Главоболие',
+    },
+    's_mood': {
+      'ro': 'Dispoziție',
+      'en': 'Mood',
+      'fr': 'Humeur',
+      'de': 'Stimmung',
+      'it': 'Umore',
+      'es': 'Estado de ánimo',
+      'pt': 'Humor',
+      'hu': 'Kedélyállapot',
+      'pl': 'Nastrój',
+      'tr': 'Ruh hali',
+      'ru': 'Настроение',
+      'uk': 'Настрій',
+      'bg': 'Настроение',
+    },
+    's_acne': {
+      'ro': 'Acnee',
+      'en': 'Acne',
+      'fr': 'Acné',
+      'de': 'Akne',
+      'it': 'Acne',
+      'es': 'Acné',
+      'pt': 'Acne',
+      'hu': 'Akne',
+      'pl': 'Trądzik',
+      'tr': 'Akne',
+      'ru': 'Акне',
+      'uk': 'Акне',
+      'bg': 'Акне',
+    },
+    's_bloating': {
+      'ro': 'Balonare',
+      'en': 'Bloating',
+      'fr': 'Ballonnements',
+      'de': 'Blähungen',
+      'it': 'Gonfiore',
+      'es': 'Hinchazón',
+      'pt': 'Inchaço',
+      'hu': 'Puffadás',
+      'pl': 'Wzdęcia',
+      'tr': 'Şişkinlik',
+      'ru': 'Вздутие',
+      'uk': 'Здуття',
+      'bg': 'Подуване',
+    },
+    's_fatigue': {
+      'ro': 'Oboseală',
+      'en': 'Fatigue',
+      'fr': 'Fatigue',
+      'de': 'Müdigkeit',
+      'it': 'Stanchezza',
+      'es': 'Fatiga',
+      'pt': 'Cansaço',
+      'hu': 'Fáradtság',
+      'pl': 'Zmęczenie',
+      'tr': 'Yorgunluk',
+      'ru': 'Утомляемость',
+      'uk': 'Втома',
+      'bg': 'Умора',
+    },
+    'savedSymptom': {
+      'ro': 'Simptom salvat',
+      'en': 'Symptom saved',
+      'fr': 'Symptôme enregistré',
+      'de': 'Symptom gespeichert',
+      'it': 'Sintomo salvato',
+      'es': 'Síntoma guardado',
+      'pt': 'Sintoma salvo',
+      'hu': 'Tünet elmentve',
+      'pl': 'Zapisano objaw',
+      'tr': 'Semptom kaydedildi',
+      'ru': 'Симптом сохранён',
+      'uk': 'Симптом збережено',
+      'bg': 'Симптомът е запазен',
+    },
+
+    // ===== EKG labels =====
+    'ekg': {
+      'ro': 'EKG',
+      'en': 'ECG',
+      'fr': 'ECG',
+      'de': 'EKG',
+      'it': 'ECG',
+      'es': 'ECG',
+      'pt': 'ECG',
+      'hu': 'EKG',
+      'pl': 'EKG',
+      'tr': 'EKG',
+      'ru': 'ЭКГ',
+      'uk': 'ЕКГ',
+      'bg': 'ЕКГ',
+    },
+    'ekgSubtitle': {
+      'ro': 'Vizualizare live + controale',
+      'en': 'Live view + controls',
+      'fr': 'Vue en direct + contrôles',
+      'de': 'Live-Ansicht + Steuerung',
+      'it': 'Vista live + controlli',
+      'es': 'Vista en vivo + controles',
+      'pt': 'Ao vivo + controlos',
+      'hu': 'Élő nézet + vezérlők',
+      'pl': 'Widok na żywo + sterowanie',
+      'tr': 'Canlı görünüm + kontroller',
+      'ru': 'Живой вид + органы управления',
+      'uk': 'Живий перегляд + керування',
+      'bg': 'Изглед на живо + контроли',
+    },
+    'recording': {
+      'ro': 'Înregistrare',
+      'en': 'Recording',
+      'fr': 'Enregistrement',
+      'de': 'Aufnahme',
+      'it': 'Registrazione',
+      'es': 'Grabando',
+      'pt': 'Gravação',
+      'hu': 'Rögzítés',
+      'pl': 'Nagrywanie',
+      'tr': 'Kaydediliyor',
+      'ru': 'Запись',
+      'uk': 'Запис',
+      'bg': 'Запис',
+    },
+    'stopped': {
+      'ro': 'Oprit',
+      'en': 'Stopped',
+      'fr': 'Arrêté',
+      'de': 'Angehalten',
+      'it': 'Fermato',
+      'es': 'Detenido',
+      'pt': 'Parado',
+      'hu': 'Leállítva',
+      'pl': 'Zatrzymano',
+      'tr': 'Durduruldu',
+      'ru': 'Остановлено',
+      'uk': 'Зупинено',
+      'bg': 'Спряно',
+    },
+    'start': {
+      'ro': 'Start',
+      'en': 'Start',
+      'fr': 'Démarrer',
+      'de': 'Start',
+      'it': 'Avvia',
+      'es': 'Iniciar',
+      'pt': 'Iniciar',
+      'hu': 'Start',
+      'pl': 'Start',
+      'tr': 'Başlat',
+      'ru': 'Старт',
+      'uk': 'Старт',
+      'bg': 'Старт',
+    },
+    'pause': {
+      'ro': 'Pauză',
+      'en': 'Pause',
+      'fr': 'Pause',
+      'de': 'Pause',
+      'it': 'Pausa',
+      'es': 'Pausa',
+      'pt': 'Pausa',
+      'hu': 'Szünet',
+      'pl': 'Pauza',
+      'tr': 'Duraklat',
+      'ru': 'Пауза',
+      'uk': 'Пауза',
+      'bg': 'Пауза',
+    },
+    'resume': {
+      'ro': 'Continuă',
+      'en': 'Resume',
+      'fr': 'Reprendre',
+      'de': 'Fortsetzen',
+      'it': 'Riprendi',
+      'es': 'Reanudar',
+      'pt': 'Retomar',
+      'hu': 'Folytatás',
+      'pl': 'Wznów',
+      'tr': 'Sürdür',
+      'ru': 'Продолжить',
+      'uk': 'Продовжити',
+      'bg': 'Продължи',
+    },
+    'stop': {
+      'ro': 'Stop',
+      'en': 'Stop',
+      'fr': 'Arrêter',
+      'de': 'Stopp',
+      'it': 'Stop',
+      'es': 'Detener',
+      'pt': 'Parar',
+      'hu': 'Stop',
+      'pl': 'Stop',
+      'tr': 'Durdur',
+      'ru': 'Стоп',
+      'uk': 'Стоп',
+      'bg': 'Стоп',
+    },
+    'paperSpeed': {
+      'ro': 'Viteza hârtiei',
+      'en': 'Paper speed',
+      'fr': 'Vitesse papier',
+      'de': 'Papiertempo',
+      'it': 'Velocità carta',
+      'es': 'Velocidad del papel',
+      'pt': 'Velocidade do papel',
+      'hu': 'Papír sebesség',
+      'pl': 'Prędkość papieru',
+      'tr': 'Kağıt hızı',
+      'ru': 'Скорость бумаги',
+      'uk': 'Швидкість паперу',
+      'bg': 'Скорост на хартията',
+    },
+    'mmPerSec': {
+      'ro': 'mm/s',
+      'en': 'mm/s',
+      'fr': 'mm/s',
+      'de': 'mm/s',
+      'it': 'mm/s',
+      'es': 'mm/s',
+      'pt': 'mm/s',
+      'hu': 'mm/s',
+      'pl': 'mm/s',
+      'tr': 'mm/s',
+      'ru': 'мм/с',
+      'uk': 'мм/с',
+      'bg': 'mm/s',
+    },
+    'amplitude': {
+      'ro': 'Amplitudine',
+      'en': 'Amplitude',
+      'fr': 'Amplitude',
+      'de': 'Amplitude',
+      'it': 'Ampiezza',
+      'es': 'Amplitud',
+      'pt': 'Amplitude',
+      'hu': 'Amplitúdó',
+      'pl': 'Amplituda',
+      'tr': 'Genlik',
+      'ru': 'Амплитуда',
+      'uk': 'Амплітуда',
+      'bg': 'Амплитуда',
+    },
+    'mmPerMv': {
+      'ro': 'mm/mV',
+      'en': 'mm/mV',
+      'fr': 'mm/mV',
+      'de': 'mm/mV',
+      'it': 'mm/mV',
+      'es': 'mm/mV',
+      'pt': 'mm/mV',
+      'hu': 'mm/mV',
+      'pl': 'mm/mV',
+      'tr': 'mm/mV',
+      'ru': 'мм/мВ',
+      'uk': 'мм/мВ',
+      'bg': 'mm/mV',
+    },
+    'ekgDisclaimer': {
+      'ro':
+          'Notă: Datele EKG au rol informativ. Aplicația NU este dispozitiv medical.',
+      'en':
+          'Note: ECG data is informational only. This app is NOT a medical device.',
+      'fr':
+          'Note : les données ECG sont informatives. Cette app N’EST PAS un dispositif médical.',
+      'de':
+          'Hinweis: EKG-Daten sind nur informativ. Diese App ist KEIN Medizinprodukt.',
+      'it':
+          'Nota: i dati ECG sono solo informativi. Questa app NON è un dispositivo medico.',
+      'es':
+          'Nota: los datos de ECG son informativos. Esta app NO es un dispositivo médico.',
+      'pt':
+          'Nota: os dados de ECG são informativos. Este app NÃO é um dispositivo médico.',
+      'hu':
+          'Megjegyzés: az EKG adatok tájékoztató jellegűek. Az app NEM orvosi eszköz.',
+      'pl':
+          'Uwaga: dane EKG mają charakter informacyjny. Aplikacja NIE jest urządzeniem medycznym.',
+      'tr':
+          'Not: EKG verileri bilgilendirme amaçlıdır. Bu uygulama TIBBİ cihaz değildir.',
+      'ru':
+          'Примечание: данные ЭКГ носят информационный характер. Это приложение НЕ является мед. устройством.',
+      'uk':
+          'Примітка: дані ЕКГ мають інформативний характер. Додаток НЕ є медичним пристроєм.',
+      'bg':
+          'Бележка: данните от ЕКГ са информативни. Приложението НЕ е мед. устройство.',
+    },
+
+    // ===== About page =====
+    'aboutHeader': {
+      'ro': 'Despre aplicație',
+      'en': 'About the app',
+      'fr': 'À propos',
+      'de': 'Über die App',
+      'it': "Informazioni sull'app",
+      'es': 'Acerca de la app',
+      'pt': 'Sobre o app',
+      'hu': 'Az alkalmazásról',
+      'pl': 'O aplikacji',
+      'tr': 'Uygulama hakkında',
+      'ru': 'О приложении',
+      'uk': 'Про додаток',
+      'bg': 'За приложението',
+    },
+    'aboutIntro': {
+      'ro':
+          'Această aplicație este un hub pentru dispozitivul tău wearables și oferă funcții de monitorizare, sincronizare și afișare a unor indicatori generali.',
+      'en':
+          'This app is a hub for your wearable device and provides monitoring, syncing, and display of general indicators.',
+      'fr':
+          'Cette application est un hub pour votre wearable, offrant suivi, synchronisation et affichage d’indicateurs généraux.',
+      'de':
+          'Diese App ist ein Hub für Ihr Wearable und bietet Überwachung, Synchronisierung und Anzeige allgemeiner Indikatoren.',
+      'it':
+          'Questa app è un hub pentru il tuo wearable e offre monitoraggio, sincronizzazione e visualizzazione di indicatori generali.',
+      'es':
+          'Esta app es un hub para tu wearable y ofrece monitorización, sincronización y visualización de indicadores generales.',
+      'pt':
+          'Este app é um hub para seu wearable e oferece monitoramento, sincronização e exibição de indicadores gerais.',
+      'hu':
+          'Ez az alkalmazás egy hub a viselhető eszközödhöz: monitorozás, szinkron és általános mutatók.',
+      'pl':
+          'Ta aplikacja to hub dla Twojego urządzenia ubieralnego: monitorowanie, synchronizacja i wskaźniki.',
+      'tr':
+          'Bu uygulama giyilebilir cihazınız için bir merkezdir: izleme, senkron ve genel göstergeler.',
+      'ru':
+          'Это приложение — хаб для вашего носимого устройства: мониторинг, синхронизация и отображение показателей.',
+      'uk':
+          'Цей застосунок — хаб для вашого wearable: моніторинг, синхронізація та показники.',
+      'bg':
+          'Това приложение е хъб за вашето wearable: мониторинг, синхронизация и показатели.',
+    },
+    'disclaimerImportantTitle': {
+      'ro': 'Disclaimer important',
+      'en': 'Important disclaimer',
+      'fr': 'Avertissement important',
+      'de': 'Wichtiger Haftungsausschluss',
+      'it': 'Avvertenza importantă',
+      'es': 'Descargo importante',
+      'pt': 'Aviso importante',
+      'hu': 'Fontos nyilatkozat',
+      'pl': 'Ważne zastrzeżenie',
+      'tr': 'Önemli uyarı',
+      'ru': 'Важное предупреждение',
+      'uk': 'Важливе застереження',
+      'bg': 'Важно уведомление',
+    },
+    'disclaimerImportantBody': {
+      'ro':
+          'Această aplicație NU este un dispozitiv medical și NU este destinată diagnosticării, tratamentului, vindecării sau prevenirii vreunei boli. Informațiile afișate au caracter informativ și pot fi inexacte sau incomplete. Pentru decizii privind sănătatea, consultă întotdeauna un medic.',
+      'en':
+          'This app is NOT a medical device and is NOT intended to diagnose, treat, cure, or prevent any disease. The displayed information is for informational purposes and may be inaccurate or incomplete. Always consult a physician for health decisions.',
+      'fr':
+          "Cette application n'est PAS un dispositif médical et n'est pas destinée à diagnostiquer, traiter, guérir ou prévenir une maladie. Les informations affichées sont indicatives et peuvent être inexactes ou incomplètes. Consultez un médecin.",
+      'de':
+          'Diese App ist KEIN Medizinprodukt und nicht zur Diagnose/Behandlung/Heilung/Prävention gedacht. Angaben können ungenau sein. Konsultieren Sie einen Arzt.',
+      'it':
+          'Questa app NON è un dispozitiv medical și nu e destinată diagnosticării sau tratamentului. Informațiile pot fi imprecise. Consulta un medic.',
+      'es':
+          'Esta app NO es un dispositivo médico ni está destinada a diagnosticar, tratar o prevenir enfermedades. La información puede ser inexacta. Consulta a un médico.',
+      'pt':
+          'Este app NÃO é um dispositivo médico nem destinado a diagnosticar, tratar ou prevenir doenças. As informações podem ser imprecisas. Consulte um médico.',
+      'hu':
+          'Ez az app NEM orvosi eszköz; nem diagnosztizál, nem kezel. Az információk tájékoztató jellegűek. Fordulj orvoshoz.',
+      'pl':
+          'Ta aplikacja NIE jest urządzeniem medycznym i nie służy do diagnozy/leczenia. Informacje mogą być niepełne. Skonsultuj lekarza.',
+      'tr':
+          'Bu uygulama TIBBİ cihaz değildir; teşhis/tedavi için değildir. Bilgiler yanıltıcı olabilir. Doktora danışın.',
+      'ru':
+          'Это приложение НЕ является мед. устройством и не предназначено для диагностики/лечения. Информация может быть неточной. Обратитесь к врачу.',
+      'uk':
+          'Цей застосунок НЕ є медичним пристроєм і не призначений для діагностики/лікування. Інформація може бути неточною. Звертайтесь до лікаря.',
+      'bg':
+          'Това приложение НЕ е мед. устройство и не е за диагноза/лечение. Данните може да са неточни. Консултирайте лекар.',
+    },
+    'appVersionTitle': {
+      'ro': 'Versiune aplicație',
+      'en': 'App version',
+      'fr': 'Version de l’app',
+      'de': 'App-Version',
+      'it': 'Versione app',
+      'es': 'Versión de la app',
+      'pt': 'Versão do app',
+      'hu': 'App-verzió',
+      'pl': 'Wersja aplikacji',
+      'tr': 'Uygulama sürümü',
+      'ru': 'Версия приложения',
+      'uk': 'Версія додатка',
+      'bg': 'Версия на приложението',
+    },
+    'version': {
+      'ro': 'Versiune:',
+      'en': 'Version:',
+      'fr': 'Version :',
+      'de': 'Version:',
+      'it': 'Versione:',
+      'es': 'Versión:',
+      'pt': 'Versão:',
+      'hu': 'Verzió:',
+      'pl': 'Wersja:',
+      'tr': 'Sürüm:',
+      'ru': 'Версия:',
+      'uk': 'Версія:',
+      'bg': 'Версия:',
+    },
+    'build': {
+      'ro': 'Build:',
+      'en': 'Build:',
+      'fr': 'Build :',
+      'de': 'Build:',
+      'it': 'Build:',
+      'es': 'Build:',
+      'pt': 'Build:',
+      'hu': 'Build:',
+      'pl': 'Build:',
+      'tr': 'Build:',
+      'ru': 'Сборка:',
+      'uk': 'Білд:',
+      'bg': 'Билд:',
+    },
+    'copyrightTitle': {
+      'ro': 'Drepturi de autor',
+      'en': 'Copyright',
+      'fr': "Droits d'auteur",
+      'de': 'Urheberrecht',
+      'it': "Diritto d'autore",
+      'es': 'Derechos de autor',
+      'pt': 'Direitos autorais',
+      'hu': 'Szerzői jog',
+      'pl': 'Prawa autorskie',
+      'tr': 'Telif hakkı',
+      'ru': 'Авторское право',
+      'uk': 'Авторське право',
+      'bg': 'Авторски права',
+    },
+    'copyrightText': {
+      'ro':
+          '© 2025 AGP WEAR HUB. Toate drepturile rezervate. Mărcile menționate aparțin proprietarilor lor.',
+      'en':
+          '© 2025 AGP WEAR HUB. All rights reserved. Mentioned trademarks belong to their respective owners.',
+      'fr':
+          '© 2025 AGP WEAR HUB. Tous droits réservés. Les marques mentionnées appartiennent à leurs propriétaires.',
+      'de':
+          '© 2025 AGP WEAR HUB. Alle Rechte vorbehalten. Genannte Marken gehören ihren Eigentümern.',
+      'it':
+          '© 2025 AGP WEAR HUB. Tutti i diritti riservati. I marchi citati appartengono ai rispettivi proprietari.',
+      'es':
+          '© 2025 AGP WEAR HUB. Todos los derechos reservados. Las marcas pertenecen a sus propietarios.',
+      'pt':
+          '© 2025 AGP WEAR HUB. Todos os direitos reservados. As marcas pertencem aos seus proprietários.',
+      'hu':
+          '© 2025 AGP WEAR HUB. Minden jog fenntartva. A márkanevek a tulajdonosoké.',
+      'pl':
+          '© 2025 AGP WEAR HUB. Wszelkie prawa zastrzeżone. Znaki towarowe należą do właścicieli.',
+      'tr':
+          '© 2025 AGP WEAR HUB. Tüm hakları saklıdır. Bahsi geçen markalar sahiplerinindir.',
+      'ru':
+          '© 2025 AGP WEAR HUB. Все права защищены. Упомянутые торговые марки принадлежат их владельцам.',
+      'uk':
+          '© 2025 AGP WEAR HUB. Усі права захищені. Згадані торгові марки належать їх власникам.',
+      'bg':
+          '© 2025 AGP WEAR HUB. Всички права запазени. Марките са собственост на притежателите им.',
+    },
+
+    // ===== Terms page =====
+    'termsLastUpdated': {
+      'ro':
+          'Ultima actualizare: 25 septembrie 2025\n\nAceastă aplicație este oferită “ca atare”. Prin utilizarea aplicației, ești de acord cu acești termeni. Te rugăm să citești cu atenție toate secțiunile de mai jos.',
+      'en':
+          'Last updated: September 25, 2025\n\nThis app is provided “as is”. By using the app, you agree to these terms. Please read all sections below carefully.',
+      'fr':
+          'Dernière mise à jour : 25 septembre 2025\n\nCette app est fournie « en l’état ». En l’utilisant, vous acceptez ces termes. Lisez attentivement les sections ci-dessous.',
+      'de':
+          'Zuletzt aktualisiert: 25. September 2025\n\nDiese App wird „wie besehen“ bereitgestellt. Mit der Nutzung stimmen Sie den Bedingungen zu.',
+      'it':
+          'Ultimo aggiornamento: 25 settembre 2025\n\nApp fornita “così com’è”. Usandola, accetti i termini. Leggi con atenție.',
+      'es':
+          'Última actualización: 25 septiembre 2025\n\nEsta app se ofrece “tal cual”. Al usarla, aceptas estos términos.',
+      'pt':
+          'Última atualização: 25 setembro 2025\n\nApp fornecido “no estado”. Ao usar, você concorda com os termos.',
+      'hu':
+          'Utolsó frissítés: 2025. szept. 25.\n\nAz app „ahogy van” alapon érhető el. Használattal elfogadod a feltételeket.',
+      'pl':
+          'Ostatnia aktualizacja: 25 września 2025 r.\n\nAplikacja „tak jak jest”. Korzystając, akceptujesz warunki.',
+      'tr':
+          'Son güncelleme: 25 Eylül 2025\n\nUygulama “olduğu gibi” sunulur. Kullanarak şartları kabul edersiniz.',
+      'ru':
+          'Обновлено: 25 сентября 2025\n\nПриложение предоставляется «как есть». Используя его, вы принимаете условия.',
+      'uk':
+          'Оновлено: 25 вересня 2025\n\nЗастосунок надається «як є». Користуючись ним, ви погоджуєтеся з умовами.',
+      'bg':
+          'Последна актуализация: 25 септември 2025\n\nПриложението е „както е“. С използването му приемате условията.',
+    },
+    'allowedUseTitle': {
+      'ro': '1. Utilizare permisă',
+      'en': '1. Permitted use',
+      'fr': '1. Usage autorisé',
+      'de': '1. Zulässige Nutzung',
+      'it': '1. Uso consentito',
+      'es': '1. Uso permitido',
+      'pt': '1. Uso permitido',
+      'hu': '1. Engedélyezett használat',
+      'pl': '1. Dozwolone użycie',
+      'tr': '1. İzin verilen kullanım',
+      'ru': '1. Допустимое использование',
+      'uk': '1. Дозволене використання',
+      'bg': '1. Разрешена употреба',
+    },
+    'allowedUseText': {
+      'ro':
+          'Aplicația poate fi folosită doar în scop personal și în conformitate cu legislația în vigoare. Orice încercare de inginerie inversă, exploatare sau abuz al serviciului este interzisă.',
+      'en':
+          'The app may be used for personal purposes only and in accordance with applicable laws. Any attempt at reverse engineering, exploitation, or abuse of the service is prohibited.',
+      'fr':
+          "L'application est réservée à un usage personnel et conformément aux lois. Toute rétro-ingénierie, exploitation ou abus est interdit.",
+      'de':
+          'Die App darf nur privat und gemäß geltenden Gesetzen genutzt werden. Reverse Engineering, Ausnutzung oder Missbrauch sind verboten.',
+      'it':
+          "L'app è per uso personale e secondo le leggi vigenti. Vietata l’ingegneria inversa, lo sfruttamento o l’abuso.",
+      'es':
+          'La app es para uso personal y según la ley vigente. Prohibida la ingeniería inversa, explotación o abuso.',
+      'pt':
+          'O app é para uso pessoal e conforme a lei. É proibida engenharia reversa, exploração ou abuso.',
+      'hu':
+          'Az app csak személyes célra, jogszabályok szerint használható. Tilos a visszafejtés, kihasználás vagy visszaélés.',
+      'pl':
+          'Aplikacja tylko do użytku osobistego, zgodnie z prawem. Zakazane jest inżynieria wsteczna, eksploatacja czy nadużycia.',
+      'tr':
+          'Uygulama yalnızca kişisel kullanım içindir ve yasalara tabidir. Tersine mühendislik, sömürü veya kötüye kullanım yasaktır.',
+      'ru':
+          'Приложение для личного пользования и в соответствии с законом. Реверс-инжиниринг, эксплуатация и злоупотребления запрещены.',
+      'uk':
+          'Додаток лише для особистого користування і згідно із законом. Зворотна розробка чи зловживання заборонені.',
+      'bg':
+          'Приложението е само за лична употреба и според закона. Забранени са обратен инженеринг, експлоатация или злоупотреба.',
+    },
+    'accountSecurityTitle': {
+      'ro': '2. Cont și securitate',
+      'en': '2. Account & security',
+      'fr': '2. Compte et sécurité',
+      'de': '2. Konto & Sicherheit',
+      'it': '2. Account e sicurezza',
+      'es': '2. Cuenta y seguridad',
+      'pt': '2. Conta e segurança',
+      'hu': '2. Fiók és biztonság',
+      'pl': '2. Konto i bezpieczeństwo',
+      'tr': '2. Hesap ve güvenlik',
+      'ru': '2. Аккаунт и безопасность',
+      'uk': '2. Обліковий запис і безпека',
+      'bg': '2. Акаунт и сигурност',
+    },
+    'accountSecurityText': {
+      'ro':
+          'Ești responsabil pentru confidențialitatea datelor contului tău. Anunță-ne imediat dacă observi activitate suspectă.',
+      'en':
+          'You are responsible for maintaining the confidentiality of your account data. Notify us immediately if you notice any suspicious activity.',
+      'fr':
+          'Vous êtes responsable de la confidentialité de votre compte. Prévenez-nous en cas d’activité suspecte.',
+      'de':
+          'Sie sind für die Vertraulichkeit Ihrer Kontodaten verantwortlich. Melden Sie verdächtige Aktivitäten umgehend.',
+      'it':
+          'Sei responsabile della riservatezza dei dati del tuo account. Segnalaci subito activități suspecte.',
+      'es':
+          'Eres responsable de la confidencialidad de tu cuenta. Avísanos si detectas actividad sospechosa.',
+      'pt':
+          'Você é responsável pela confidencialidade da sua conta. Avise se notar atividade suspeita.',
+      'hu':
+          'Felelsz a fiókadataid titkosságáért. Azonnal jelezd a gyanús tevékenységet.',
+      'pl':
+          'Odpowiadasz za poufność danych konta. Zgłoś natychmiast podejrzaną aktywność.',
+      'tr':
+          'Hesap verilerinin gizliliğinden sen sorumlusun. Şüpheli etkinlikte hemen bildir.',
+      'ru':
+          'Вы несёте ответственность за конфиденциальность данных аккаунта. Сообщайте о подозрительной активности.',
+      'uk':
+          'Ви відповідаєте за конфіденційність даних облікового запису. Повідомляйте про підозрілу активність.',
+      'bg':
+          'Отговаряте за поверителността на акаунта. Сигнализирайте при съмнителна активност.',
+    },
+    'dataPrivacyTitle': {
+      'ro': '3. Date și confidențialitate',
+      'en': '3. Data & privacy',
+      'fr': '3. Données et confidentialité',
+      'de': '3. Daten & Datenschutz',
+      'it': '3. Dati e privacy',
+      'es': '3. Datos y privacidad',
+      'pt': '3. Dados e privacidade',
+      'hu': '3. Adat és adatvédelem',
+      'pl': '3. Dane i prywatność',
+      'tr': '3. Veri ve gizlilik',
+      'ru': '3. Данные и конфиденциальность',
+      'uk': '3. Дані та конфіденційність',
+      'bg': '3. Данни и поверителност',
+    },
+    'dataPrivacyText': {
+      'ro':
+          'Datele sunt procesate conform politicilor interne și legislației. Poți solicita oricând ștergerea contului și a datelor asociate.',
+      'en':
+          'Data is processed in line with internal policies and applicable law. You may request deletion of your account and associated data at any time.',
+      'fr':
+          'Données traitées selon nos politiques et la loi. Vous pouvez demander la suppression du compte și a datelor.',
+      'de':
+          'Daten werden gemäß internen Richtlinien und Gesetzen verarbeitet. Löschung des Kontos ist jederzeit möglich.',
+      'it':
+          'I dati sono trattati secondo policy interne e legge. Puoi richiedere la cancellazione in qualsiasi momento.',
+      'es':
+          'Los datos se tratan según políticas internas y la ley. Puedes solicitar la eliminación cuando quieras.',
+      'pt':
+          'Os dados são tratados conforme políticas internas e lei. Pode pedir a eliminação a qualquer momento.',
+      'hu':
+          'Az adatok belső szabályzat și jog szerint kezeltek. Kérheted a törlést bármikor.',
+      'pl':
+          'Dane przetwarzane wg polityk i prawa. Możesz żądać usunięcia konta w każdej chwili.',
+      'tr':
+          'Veriler politika ve yasa uyarınca işlenir. Hesap/silme talep edebilirsin.',
+      'ru':
+          'Данные обрабатываются по политике и закону. Можно запросить удаление аккаунта.',
+      'uk':
+          'Дані обробляються згідно політик і закону. Можна запитати видалення облікового запису.',
+      'bg':
+          'Данните се обработват по политики și закон. Можете да поискате изтриване по всяко време.',
+    },
+    'liabilityTitle': {
+      'ro': '4. Limitarea răspunderii',
+      'en': '4. Limitation of liability',
+      'fr': '4. Limitation de responsabilité',
+      'de': '4. Haftungsbeschränkung',
+      'it': '4. Limitazione di responsabilità',
+      'es': '4. Limitación de responsabilidad',
+      'pt': '4. Limitação de responsabilidade',
+      'hu': '4. Felelősség korlátozása',
+      'pl': '4. Ograniczenie odpowiedzialności',
+      'tr': '4. Sorumluluk sınırlaması',
+      'ru': '4. Ограничение ответственности',
+      'uk': '4. Обмеження відповідальності',
+      'bg': '4. Ограничаване на отговорността',
+    },
+    'liabilityText': {
+      'ro':
+          'Nu garantăm funcționarea neîntreruptă sau lipsită de erori a aplicației. Nu suntem responsabili pentru pierderi rezultate din utilizarea aplicației.',
+      'en':
+          'We do not warrant uninterrupted or error-free operation of the app. We are not liable for any losses resulting from the app’s use.',
+      'fr':
+          'Aucune garantie d’un fonctionnement ininterrompu ou sans erreur. Aucune responsabilité pentru pertes rezultate.',
+      'de':
+          'Keine Gewähr für unterbrechungsfreien, fehlerfreien Betrieb. Keine Haftung pentru daraus resultierende Schäden.',
+      'it':
+          'Nessuna garanzia di funzionamento continuo sau senza errori. Nessuna responsabilità pentru perdite.',
+      'es':
+          'No garantizamos funcionamiento ininterrumpido o sin errores. No somos responsables por pérdidas.',
+      'pt':
+          'Não garantimos funcionamento ininterrupto/sem erros. Sem responsabilidade por perdas.',
+      'hu':
+          'Nem garantálunk hibamentes, folyamatos működést. Nem vállalunk felelősséget veszteségért.',
+      'pl':
+          'Nie gwarantujemy непрерванnej, без błędów pracy. Nie odpowiadamy za straty.',
+      'tr':
+          'Kesintisiz/hatasız çalışmayı garanti etmeyiz. Kayıplardan sorumlu değiliz.',
+      'ru':
+          'Не гарантируем бесперебойную/безошибочную работу. Не несем ответственности за убытки.',
+      'uk':
+          'Не гарантуємо безперервну/безпомилкову роботу. Не несемо відповідальності за збитки.',
+      'bg':
+          'Не гарантираме непрекъсната/безгрешна работа. Не носим отговорност за загуби.',
+    },
+    'changesTitle': {
+      'ro': '5. Modificări',
+      'en': '5. Changes',
+      'fr': '5. Modifications',
+      'de': '5. Änderungen',
+      'it': '5. Modifiche',
+      'es': '5. Cambios',
+      'pt': '5. Alterações',
+      'hu': '5. Változtatások',
+      'pl': '5. Zmiany',
+      'tr': '5. Değişiklikler',
+      'ru': '5. Изменения',
+      'uk': '5. Зміни',
+      'bg': '5. Промени',
+    },
+    'changesText': {
+      'ro':
+          'Ne rezervăm dreptul de a modifica termenii. Versiunea actualizată va fi publicată în această pagină.',
+      'en':
+          'We reserve the right to change these terms. The updated version will be published on this page.',
+      'fr':
+          'Nous nous réservons le droit de modifier ces termes. La version à jour sera publiée ici.',
+      'de':
+          'Wir behalten uns Änderungen vor. Die aktualisierte Version wird hier veröffentlicht.',
+      'it':
+          'Ci riserviamo di modificare i termini. La versione aggiornata sarà publicată aqui.',
+      'es':
+          'Nos reservamos el derecho de cambiar los términos. La versión actualizada se publicará aquí.',
+      'pt':
+          'Reservamo-nos o direito de alterar os termos. A versão atualizada será publicada aqui.',
+      'hu':
+          'Fenntartjuk a jogot a módosításra. A frissített verzió itt jelenik meg.',
+      'pl':
+          'Zastrzegamy prawo do zmian. Zaktualizowana wersja będzie tu opublikowana.',
+      'tr':
+          'Koşulları değiştirme hakkımız saklıdır. Güncel sürüm burada yayımlanacaktır.',
+      'ru':
+          'Оставляем за собой право менять условия. Обновленная версия будет опубликована здесь.',
+      'uk':
+          'Залишаємо за собою право змінювати умови. Оновлену версію буде опубліковано тут.',
+      'bg':
+          'Запазваме си правото да променяме условията. Обновената версия ще бъде публикувана тук.',
+    },
+    'termsNoteItalic': {
+      'ro':
+          'Acest text este un șablon indicativ. Înlocuiește cu termenii oficiali și/sau consultă un jurist.',
+      'en':
+          'This text is a sample template. Replace it with official terms and/or consult a legal professional.',
+      'fr':
+          'Ce texte est un modèle. Remplacez-le par des termes officiels și/ou consultez un juriste.',
+      'de':
+          'Dieser Text ist eine Vorlage. Ersetzen Sie ihn durch offizielle Bedingungen și/oder konsultieren Sie einen Juristen.',
+      'it':
+          'Questo testo è un modello. Sostituiscilo con termini ufficiali e/o consulta un legale.',
+      'es':
+          'Este texto es una plantilla. Sustitúyelo por términos oficiales y/o consulta a un abogado.',
+      'pt':
+          'Este texto é um modelo. Substitua por termos oficiais e/ou consulte um advogado.',
+      'hu':
+          'Ez egy minta szöveg. Cseréld hivatalos feltételekre és/vagy kérj jogi tanácsot.',
+      'pl':
+          'To jest wzór. Zastąp go oficjalnymi warunkami i/lub skonsultuj prawnika.',
+      'tr':
+          'Bu metin örnektir. Resmî şartlarla değiştirin ve/veya hukukçuya danışın.',
+      'ru':
+          'Это образец текста. Замените официальными условиями и/или проконсультируйтесь с юристом.',
+      'uk':
+          'Це зразок тексту. Замініть на офіційні умови та/або зверніться до юриста.',
+      'bg':
+          'Този текст е пример. Заменете с официални условия и/или се консултирайте с юрист.',
+    },
+  };
+}
+
+/// API simplu de traduceri cu fallback și parametri
+class T {
+  final AppLang lang;
+  const T(this.lang);
+
+  String _code() => lang.code;
+
+  /// alias intern pentru traducere simplă
+  String _s(String key) {
+    final m = _L10nDict.data[key];
+    if (m == null) return key;
+    return m[_code()] ?? m['en'] ?? key;
+  }
+
+  /// alias compatibil cu getterele existente (menstrual) — identic cu _s
+  String _tr(String key) => _s(key);
+
+  /// alias public, dacă vrei să traduci dinamic: t.tr('key')
+  String tr(String key) => _s(key);
+
+  String _sArgs(String key, Map<String, String> params) {
+    var txt = _s(key);
+    params.forEach((k, v) {
+      txt = txt.replaceAll('{$k}', v);
+    });
+    return txt;
+  }
+
+  // ===== Global =====
+  String get language => _s('language');
+  String get romanian => _s('romanian');
+  String get english => _s('english');
+
+  // ===== Settings =====
+  String get settingsTitle => _s('settingsTitle');
+  String get deviceSettings => _s('deviceSettings');
+  String get adapterBLE => _s('adapterBLE');
+  String get adapterSDK => _s('adapterSDK');
+  String get autoReconnect => _s('autoReconnect');
+  String get startHROnOpen => _s('startHROnOpen');
+  String get pollIntervalSec => _s('pollIntervalSec');
+  String get userProfile => _s('userProfile');
+  String get fullName => _s('fullName');
+  String get ageYears => _s('ageYears');
+  String get weightKg => _s('weightKg');
+  String get heightCm => _s('heightCm');
+  String get emergencyPhone => _s('emergencyPhone');
+  String get saveProfile => _s('saveProfile');
+  String get savedLocally => _s('savedLocally');
+  String get requiredField => _s('requiredField');
+  String get invalidPhone => _s('invalidPhone');
+  String get savedSnack => _s('savedSnack');
+
+  // ===== Activity =====
+  String get activityType => _s('activityType');
+  String get sedentary => _s('sedentary');
+  String get moderate => _s('moderate');
+  String get active => _s('active');
+
+  // ===== Diagnostics =====
+  String get diagnosticsTitle => _s('diagnosticsTitle');
+  String get refresh => _s('refresh');
+
+  // ===== Device Details / vitals =====
+  String get device => _s('device');
+  String get hr => _s('hr');
+  String get bpm => _s('bpm');
+  String get spo2 => _s('spo2');
+  String get percent => _s('percent');
+  String get temperature => _s('temperature');
+  String get degC => _s('degC');
+  String get steps => _s('steps');
+  String get respiration => _s('respiration');
+  String get rpm => _s('rpm');
+  String get hrv => _s('hrv');
+  String get ms => _s('ms');
+  String get bloodPressure => _s('bloodPressure');
+  String get mmHg => _s('mmHg');
+  String get battery => _s('battery');
+
+  // ===== Home (scan/connect) =====
+  String get homeTitle => _s('homeTitle');
+  String get startScan => _s('startScan');
+  String get stopScan => _s('stopScan');
+  String get connect => _s('connect');
+  String get disconnect => _s('disconnect');
+  String get scanning => _s('scanning');
+  String get noDevices => _s('noDevices');
+  String get bluetoothOff => _s('bluetoothOff');
+  String get locationOff => _s('locationOff');
+  String get openSettings => _s('openSettings');
+  String get connectedTo => _s('connectedTo');
+  String get rssi => _s('rssi');
+
+  // Home status & banner
+  String get connected => _s('connected');
+  String get selected => _s('selected');
+  String get connectedActive => _s('connectedActive');
+  String get realtimeMonitoring => _s('realtimeMonitoring');
+
+  // Erori / Snack-uri
+  String get errorScan => _s('errorScan');
+  String get errorConnect => _s('errorConnect');
+  String get couldNotConnect => _s('couldNotConnect');
+  String cannotOpenDialer(String number) =>
+      _sArgs('cannotOpenDialer', {'number': number});
+
+  // ===== SOS =====
+  String get sosButton => _s('sosButton');
+
+  // ===== Settings -> Measurements & Legal =====
+  String get measurements => _s('measurements');
+  String get legalInfo => _s('legalInfo');
+  String get terms => _s('terms');
+  String get aboutApp => _s('aboutApp');
+  String get nonMedicalApp => _s('nonMedicalApp');
+
+    // ===== Menstrual cycle =====
+  String get menstrualCycle    => _tr('menstrualCycle');
+  String get menstrualSubtitle => _tr('menstrualSubtitle');
+
+  String get menstrualTitle    => _tr('menstrualTitle');
+  String get cycleTracking     => _tr('cycleTracking');
+  String get lastPeriodDate    => _tr('lastPeriodDate');
+  String get avgCycleLen       => _tr('avgCycleLen');
+  String get avgPeriodLen      => _tr('avgPeriodLen');
+  String get days              => _tr('days');
+  String get markStartToday    => _tr('markStartToday');
+  String get markEndToday      => _tr('markEndToday');
+  String get predictedNextPeriod => _tr('predictedNextPeriod');
+  String get predictedStart    => _tr('predictedStart');
+  String get predictedEnd      => _tr('predictedEnd');
+  String get fertileWindow     => _tr('fertileWindow');
+  String get symptoms          => _tr('symptoms');
+  String get notes             => _tr('notes');
+
+  // Symptoms chips
+  String get s_cramps          => _tr('s_cramps');
+  String get s_headache        => _tr('s_headache');
+  String get s_mood            => _tr('s_mood');
+  String get s_acne            => _tr('s_acne');
+  String get s_bloating        => _tr('s_bloating');
+  String get s_fatigue         => _tr('s_fatigue');
+  String get savedSymptom      => _tr('savedSymptom');
+
+
+  // ===== EKG labels =====
+  String get ekg => _s('ekg');
+  String get ekgSubtitle => _s('ekgSubtitle');
+  String get recording => _s('recording');
+  String get stopped => _s('stopped');
+  String get start => _s('start');
+  String get pause => _s('pause');
+  String get resume => _s('resume');
+  String get stop => _s('stop');
+  String get paperSpeed => _s('paperSpeed');
+  String get mmPerSec => _s('mmPerSec');
+  String get amplitude => _s('amplitude');
+  String get mmPerMv => _s('mmPerMv');
+  String get ekgDisclaimer => _s('ekgDisclaimer');
+
+  // ===== About page =====
+  String get aboutHeader => _s('aboutHeader');
+  String get aboutIntro => _s('aboutIntro');
+  String get disclaimerImportantTitle => _s('disclaimerImportantTitle');
+  String get disclaimerImportantBody => _s('disclaimerImportantBody');
+  String get appVersionTitle => _s('appVersionTitle');
+  String get version => _s('version');
+  String get build => _s('build');
+  String get copyrightTitle => _s('copyrightTitle');
+  String get copyrightText => _s('copyrightText');
+
+  // ===== Terms page =====
+  String get termsLastUpdated => _s('termsLastUpdated');
+  String get allowedUseTitle => _s('allowedUseTitle');
+  String get allowedUseText => _s('allowedUseText');
+  String get accountSecurityTitle => _s('accountSecurityTitle');
+  String get accountSecurityText => _s('accountSecurityText');
+  String get dataPrivacyTitle => _s('dataPrivacyTitle');
+  String get dataPrivacyText => _s('dataPrivacyText');
+  String get liabilityTitle => _s('liabilityTitle');
+  String get liabilityText => _s('liabilityText');
+  String get changesTitle => _s('changesTitle');
+  String get changesText => _s('changesText');
+  String get termsNoteItalic => _s('termsNoteItalic');
+}
+

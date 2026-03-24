@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +7,9 @@ import '../../sdk/sdk_provider.dart';
 import '../../models/vitals.dart';
 import 'widgets/vital_tile.dart';
 import '../../i18n/locale.dart';
+import '../../storage/vitals_db.dart';
+import '../../sdk/ble_reconnect_manager.dart';
+import '../history/history_page.dart';
 
 class DeviceDetailsPage extends ConsumerStatefulWidget {
   final String deviceId;
@@ -30,6 +34,7 @@ class _DeviceDetailsPageState extends ConsumerState<DeviceDetailsPage> {
   };
 
   bool _loadedPrefs = false;
+  final List<StreamSubscription> _historySubs = [];
 
   String _key(String vital) => 'vitals.${widget.deviceId}.$vital.on';
 
@@ -50,6 +55,48 @@ class _DeviceDetailsPageState extends ConsumerState<DeviceDetailsPage> {
   void initState() {
     super.initState();
     _loadPrefs();
+    _startHistoryRecording();
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _historySubs) {
+      sub.cancel();
+    }
+    super.dispose();
+  }
+
+  /// Înregistrează sample-urile din stream-uri în baza de date.
+  void _startHistoryRecording() {
+    final sdk = ref.read(sdkProvider);
+    final db = VitalsDatabase();
+    final id = widget.deviceId;
+
+    _historySubs.add(
+      sdk.heartRateStream(id).listen((s) {
+        db.insert(VitalRecord(deviceId: id, type: VitalType.hr, value: s.value.toDouble(), ts: s.ts));
+      }),
+    );
+    _historySubs.add(
+      sdk.spO2Stream(id).listen((s) {
+        db.insert(VitalRecord(deviceId: id, type: VitalType.spo2, value: s.value.toDouble(), ts: s.ts));
+      }),
+    );
+    _historySubs.add(
+      sdk.temperatureStream(id).listen((s) {
+        db.insert(VitalRecord(deviceId: id, type: VitalType.temp, value: s.value, ts: s.ts));
+      }),
+    );
+    _historySubs.add(
+      sdk.stepsStream(id).listen((s) {
+        db.insert(VitalRecord(deviceId: id, type: VitalType.steps, value: s.value.toDouble(), ts: s.ts));
+      }),
+    );
+    _historySubs.add(
+      sdk.batteryStream(id).listen((s) {
+        db.insert(VitalRecord(deviceId: id, type: VitalType.battery, value: s.value.toDouble(), ts: s.ts));
+      }),
+    );
   }
 
   @override
@@ -98,6 +145,33 @@ class _DeviceDetailsPageState extends ConsumerState<DeviceDetailsPage> {
         centerTitle: true,
         elevation: 0,
         backgroundColor: Colors.transparent,
+        actions: [
+          IconButton(
+            tooltip: t.tr('viewHistory'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => HistoryPage(
+                  deviceId: widget.deviceId,
+                  deviceName: widget.initialDisplayName,
+                ),
+              ),
+            ),
+            icon: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.7),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: theme.colorScheme.outline.withOpacity(0.2),
+                ),
+              ),
+              child: const Icon(Icons.timeline_rounded, size: 20),
+            ),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
@@ -267,15 +341,31 @@ class _ConnectionBanner extends ConsumerWidget {
     final theme = Theme.of(context);
     final t = T(ref.watch(localeProvider));
 
+    // Importăm starea reconectării
+    final bleState = ref.watch(bleReconnectProvider);
+    final isReconnecting = bleState.isReconnecting;
+    final isConnected = bleState.isConnected || !isReconnecting;
+
+    final Color bannerColor = isReconnecting ? Colors.orange : Colors.green;
+    final String statusText = isReconnecting
+        ? t.reconnecting
+        : t.connectedActive;
+    final String subtitleText = isReconnecting
+        ? t.retryAttempt(bleState.retryCount, 10)
+        : t.realtimeMonitoring;
+    final IconData icon = isReconnecting
+        ? Icons.sync_rounded
+        : Icons.bluetooth_connected_rounded;
+
     return Container(
       margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.green.shade50, Colors.green.shade100],
+          colors: [bannerColor.withOpacity(0.1), bannerColor.withOpacity(0.2)],
         ),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.withOpacity(0.2)),
+        border: Border.all(color: bannerColor.withOpacity(0.2)),
       ),
       child: Row(
         children: [
@@ -283,14 +373,10 @@ class _ConnectionBanner extends ConsumerWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: Colors.green,
+              color: bannerColor,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(
-              Icons.bluetooth_connected_rounded,
-              color: Colors.white,
-              size: 18,
-            ),
+            child: Icon(icon, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -299,36 +385,46 @@ class _ConnectionBanner extends ConsumerWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  t.connectedActive,
+                  statusText,
                   style: theme.textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: Colors.green.shade800,
+                    color: bannerColor.withOpacity(0.9),
                   ),
                 ),
                 Text(
-                  t.realtimeMonitoring,
+                  subtitleText,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.green.shade700,
+                    color: bannerColor.withOpacity(0.8),
                   ),
                 ),
               ],
             ),
           ),
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: Colors.green,
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.green.withOpacity(0.4),
-                  blurRadius: 4,
-                  spreadRadius: 1,
-                ),
-              ],
+          if (isReconnecting)
+            SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: bannerColor,
+              ),
+            )
+          else
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: Colors.green,
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.4),
+                    blurRadius: 4,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );

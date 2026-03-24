@@ -70,5 +70,6 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.2")
-    implementation(files("libs/qring_sdk_20250516.aar"))
+    // AAR dezactivat pentru mockup – se va reactiva la integrarea reală
+    // implementation(files("libs/qring_sdk_20250516.aar"))
 }

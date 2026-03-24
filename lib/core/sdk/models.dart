@@ -3,13 +3,13 @@ class WearDevice {
   final String name;
   final int? rssi;
 
-  WearDevice({required this.id, required this.name, this.rssi});
+  const WearDevice({required this.id, required this.name, this.rssi});
 
   factory WearDevice.fromMap(Map<String, dynamic> m) => WearDevice(
-        id: m['id'] as String,
-        name: (m['name'] as String?) ?? 'Unknown',
-        rssi: m['rssi'] is int ? m['rssi'] as int : null,
-      );
+    id: m['id'] as String,
+    name: (m['name'] as String?) ?? 'Unknown',
+    rssi: m['rssi'] is int ? m['rssi'] as int : null,
+  );
 
   Map<String, dynamic> toMap() => {'id': id, 'name': name, 'rssi': rssi};
 }
@@ -30,18 +30,18 @@ class WearMetrics {
   });
 
   factory WearMetrics.fromMap(Map<String, dynamic> m) => WearMetrics(
-        heartRate: (m['heartRate'] as num?)?.toInt() ?? 0,
-        steps: (m['steps'] as num?)?.toInt() ?? 0,
-        battery: (m['battery'] as num?)?.toInt() ?? 0,
-        spo2: (m['spo2'] as num?)?.toInt(),
-        calories: (m['calories'] as num?)?.toInt(),
-      );
+    heartRate: (m['heartRate'] as num?)?.toInt() ?? 0,
+    steps: (m['steps'] as num?)?.toInt() ?? 0,
+    battery: (m['battery'] as num?)?.toInt() ?? 0,
+    spo2: (m['spo2'] as num?)?.toInt(),
+    calories: (m['calories'] as num?)?.toInt(),
+  );
 
   Map<String, dynamic> toMap() => {
-        'heartRate': heartRate,
-        'steps': steps,
-        'battery': battery,
-        if (spo2 != null) 'spo2': spo2,
-        if (calories != null) 'calories': calories,
-      };
+    'heartRate': heartRate,
+    'steps': steps,
+    'battery': battery,
+    if (spo2 != null) 'spo2': spo2,
+    if (calories != null) 'calories': calories,
+  };
 }

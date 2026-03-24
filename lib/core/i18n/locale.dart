@@ -2129,6 +2129,160 @@ class _L10nDict {
       'bg':
           'Този текст е пример. Заменете с официални условия и/или се консултирайте с юрист.',
     },
+
+    // ===== History =====
+    'history': {
+      'ro': 'Istoric',
+      'en': 'History',
+      'fr': 'Historique',
+      'de': 'Verlauf',
+      'it': 'Cronologia',
+      'es': 'Historial',
+      'pt': 'Histórico',
+      'hu': 'Előzmények',
+      'pl': 'Historia',
+      'tr': 'Geçmiş',
+      'ru': 'История',
+      'uk': 'Історія',
+      'bg': 'История',
+    },
+    'noHistoryData': {
+      'ro': 'Nu există date istorice',
+      'en': 'No history data',
+      'fr': 'Aucune donnée historique',
+      'de': 'Keine Verlaufsdaten',
+      'it': 'Nessun dato storico',
+      'es': 'Sin datos históricos',
+      'pt': 'Sem dados históricos',
+      'hu': 'Nincs előzményadat',
+      'pl': 'Brak danych historycznych',
+      'tr': 'Geçmiş verisi yok',
+      'ru': 'Нет данных истории',
+      'uk': 'Немає даних історії',
+      'bg': 'Няма исторически данни',
+    },
+    'average': {
+      'ro': 'Medie',
+      'en': 'Avg',
+      'fr': 'Moy',
+      'de': 'Durchschn.',
+      'it': 'Media',
+      'es': 'Prom',
+      'pt': 'Média',
+      'hu': 'Átlag',
+      'pl': 'Śr.',
+      'tr': 'Ort.',
+      'ru': 'Ср.',
+      'uk': 'Сер.',
+      'bg': 'Ср.',
+    },
+    'samples': {
+      'ro': 'Probe',
+      'en': 'Samples',
+      'fr': 'Échantillons',
+      'de': 'Proben',
+      'it': 'Campioni',
+      'es': 'Muestras',
+      'pt': 'Amostras',
+      'hu': 'Minták',
+      'pl': 'Próbki',
+      'tr': 'Örnekler',
+      'ru': 'Замеры',
+      'uk': 'Зразки',
+      'bg': 'Проби',
+    },
+    'viewHistory': {
+      'ro': 'Vezi istoric',
+      'en': 'View history',
+      'fr': 'Voir l\'historique',
+      'de': 'Verlauf anzeigen',
+      'it': 'Vedi cronologia',
+      'es': 'Ver historial',
+      'pt': 'Ver histórico',
+      'hu': 'Előzmények',
+      'pl': 'Pokaż historię',
+      'tr': 'Geçmişi gör',
+      'ru': 'Просмотр истории',
+      'uk': 'Переглянути історію',
+      'bg': 'Виж история',
+    },
+
+    // ===== BLE Reconnect =====
+    'reconnecting': {
+      'ro': 'Se reconectează...',
+      'en': 'Reconnecting...',
+      'fr': 'Reconnexion...',
+      'de': 'Wiederverbindung...',
+      'it': 'Riconnessione...',
+      'es': 'Reconectando...',
+      'pt': 'Reconectando...',
+      'hu': 'Újracsatlakozás...',
+      'pl': 'Ponowne łączenie...',
+      'tr': 'Yeniden bağlanıyor...',
+      'ru': 'Переподключение...',
+      'uk': 'Перепідключення...',
+      'bg': 'Повторно свързване...',
+    },
+    'connectionLost': {
+      'ro': 'Conexiune pierdută',
+      'en': 'Connection lost',
+      'fr': 'Connexion perdue',
+      'de': 'Verbindung verloren',
+      'it': 'Connessione persa',
+      'es': 'Conexión perdida',
+      'pt': 'Conexão perdida',
+      'hu': 'Kapcsolat elveszett',
+      'pl': 'Połączenie utracone',
+      'tr': 'Bağlantı kesildi',
+      'ru': 'Соединение потеряно',
+      'uk': 'З\'єднання втрачено',
+      'bg': 'Връзката е загубена',
+    },
+    'deviceOffline': {
+      'ro': 'Dispozitiv offline',
+      'en': 'Device offline',
+      'fr': 'Appareil hors ligne',
+      'de': 'Gerät offline',
+      'it': 'Dispositivo offline',
+      'es': 'Dispositivo sin conexión',
+      'pt': 'Dispositivo offline',
+      'hu': 'Eszköz offline',
+      'pl': 'Urządzenie offline',
+      'tr': 'Cihaz çevrimdışı',
+      'ru': 'Устройство не в сети',
+      'uk': 'Пристрій офлайн',
+      'bg': 'Устройството е офлайн',
+    },
+    'retryAttempt': {
+      'ro': 'Încercare {n} din {max}',
+      'en': 'Retry {n} of {max}',
+      'fr': 'Tentative {n} sur {max}',
+      'de': 'Versuch {n} von {max}',
+      'it': 'Tentativo {n} di {max}',
+      'es': 'Intento {n} de {max}',
+      'pt': 'Tentativa {n} de {max}',
+      'hu': '{n}. próbálkozás ({max}-ból)',
+      'pl': 'Próba {n} z {max}',
+      'tr': 'Deneme {n}/{max}',
+      'ru': 'Попытка {n} из {max}',
+      'uk': 'Спроба {n} з {max}',
+      'bg': 'Опит {n} от {max}',
+    },
+    'disconnected': {
+      'ro': 'Deconectat',
+      'en': 'Disconnected',
+      'fr': 'Déconnecté',
+      'de': 'Getrennt',
+      'it': 'Disconnesso',
+      'es': 'Desconectado',
+      'pt': 'Desconectado',
+      'hu': 'Szétkapcsolt',
+      'pl': 'Rozłączono',
+      'tr': 'Bağlantı kesildi',
+      'ru': 'Отключено',
+      'uk': 'Від\'єднано',
+      'bg': 'Прекъсната връзка',
+    },
   };
 }
 
@@ -2317,5 +2471,20 @@ class T {
   String get changesTitle => _s('changesTitle');
   String get changesText => _s('changesText');
   String get termsNoteItalic => _s('termsNoteItalic');
+
+  // ===== History =====
+  String get history => _s('history');
+  String get noHistoryData => _s('noHistoryData');
+  String get average => _s('average');
+  String get samples => _s('samples');
+  String get viewHistory => _s('viewHistory');
+
+  // ===== BLE Reconnect =====
+  String get reconnecting => _s('reconnecting');
+  String get connectionLost => _s('connectionLost');
+  String get deviceOffline => _s('deviceOffline');
+  String get disconnectedLabel => _s('disconnected');
+  String retryAttempt(int n, int maxVal) =>
+      _sArgs('retryAttempt', {'n': '$n', 'max': '$maxVal'});
 }
 

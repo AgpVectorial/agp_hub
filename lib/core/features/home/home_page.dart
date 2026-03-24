@@ -6,15 +6,16 @@ import 'package:agp_wear_hub/core/i18n/locale.dart';
 import '../../sdk/sdk_adapter.dart';
 import '../../sdk/models.dart';
 import '../../sdk/flutter_blue_adapter.dart';
+import '../../sdk/ble_reconnect_manager.dart';
 import '../../storage/prefs.dart';
-import '../../../theme.dart';
 import '../device/device_details_page.dart';
 import '../settings/settings_page.dart';
 import '../diagnostics/diagnostics_page.dart';
+import '../test_panel/test_panel_page.dart';
 
-enum AdapterKind { ble, sdk }
+enum AdapterKind { ble, sdk, mock }
 
-final adapterKindProvider = StateProvider<AdapterKind>((_) => AdapterKind.ble);
+final adapterKindProvider = StateProvider<AdapterKind>((_) => AdapterKind.mock);
 
 final sdkProvider = Provider<WearSdk>((ref) {
   final kind = ref.watch(adapterKindProvider);
@@ -22,8 +23,10 @@ final sdkProvider = Provider<WearSdk>((ref) {
     case AdapterKind.sdk:
       return MethodChannelWearSdk();
     case AdapterKind.ble:
-    default:
       return FlutterBlueWearSdk();
+    case AdapterKind.mock:
+    default:
+      return MockWearSdk();
   }
 });
 
@@ -39,7 +42,8 @@ class HomePage extends ConsumerStatefulWidget {
   ConsumerState<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMixin {
+class _HomePageState extends ConsumerState<HomePage>
+    with TickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
 
@@ -50,17 +54,16 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
 
     final uri = Uri(scheme: 'tel', path: number);
 
-    final ok = await launchUrl(
-      uri,
-      mode: LaunchMode.externalApplication,
-    );
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
 
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(t.cannotOpenDialer(number)),
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
     }
@@ -77,6 +80,11 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
     _restorePrefsAndReconnect();
+
+    // Sincronizăm connectedProvider cu BleReconnectManager
+    ref.listenManual(bleReconnectProvider, (prev, next) {
+      ref.read(connectedProvider.notifier).state = next.isConnected;
+    });
   }
 
   @override
@@ -88,17 +96,26 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
   Future<void> _restorePrefsAndReconnect() async {
     final adapter = await Prefs.getAdapter();
     if (mounted) {
-      ref.read(adapterKindProvider.notifier).state =
-          (adapter == 'sdk') ? AdapterKind.sdk : AdapterKind.ble;
+      ref.read(adapterKindProvider.notifier).state = (adapter == 'sdk')
+          ? AdapterKind.sdk
+          : (adapter == 'ble')
+          ? AdapterKind.ble
+          : AdapterKind.mock;
     }
     final last = await Prefs.getLastDevice();
     if (last != null && mounted) {
       ref.read(selectedIdProvider.notifier).state = last;
-      try {
-        final ok = await ref.read(sdkProvider).connect(last, autoReconnect: true);
+      final kind = ref.read(adapterKindProvider);
+      if (kind == AdapterKind.mock) {
+        // Mock: conectare directă, fără BLE real
+        final ok = await ref.read(sdkProvider).connect(last);
         if (mounted) ref.read(connectedProvider.notifier).state = ok;
-      } catch (_) {
-        if (mounted) ref.read(connectedProvider.notifier).state = false;
+      } else {
+        // BLE/SDK: reconectarea gestionată via BleReconnectManager
+        final reconnect = ref.read(bleReconnectProvider.notifier);
+        reconnect.setAutoReconnect(true);
+        final ok = await reconnect.connect(last);
+        if (mounted) ref.read(connectedProvider.notifier).state = ok;
       }
     }
   }
@@ -120,6 +137,7 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
     final selectedId = ref.watch(selectedIdProvider);
     final isScanning = ref.watch(isScanningProvider);
     final isConnected = ref.watch(connectedProvider);
+    final bleState = ref.watch(bleReconnectProvider);
 
     final t = T(ref.watch(localeProvider));
     final theme = Theme.of(context);
@@ -135,6 +153,14 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
+          _CompactIconButton(
+            icon: Icons.science_rounded,
+            tooltip: 'Test Panel',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const TestPanelPage()),
+            ),
+          ),
           _CompactIconButton(
             icon: Icons.info_outline_rounded,
             tooltip: t.diagnosticsTitle,
@@ -159,6 +185,13 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+              // Banner reconectare
+              if (bleState.isReconnecting)
+                _ReconnectBanner(
+                  retryCount: bleState.retryCount,
+                  lastError: bleState.lastError,
+                ),
+
               if (isConnected || selectedId != null)
                 _CompactStatusCard(
                   isConnected: isConnected,
@@ -184,7 +217,13 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
                     child: _CompactAdapterSelector(
                       onChanged: (k) async {
                         ref.read(adapterKindProvider.notifier).state = k;
-                        await Prefs.saveAdapter(k == AdapterKind.sdk ? 'sdk' : 'ble');
+                        await Prefs.saveAdapter(
+                          k == AdapterKind.sdk
+                              ? 'sdk'
+                              : k == AdapterKind.ble
+                              ? 'ble'
+                              : 'mock',
+                        );
                       },
                     ),
                   ),
@@ -232,15 +271,26 @@ class _HomePageState extends ConsumerState<HomePage> with TickerProviderStateMix
                 final id = ref.read(selectedIdProvider);
                 if (id == null) return;
                 try {
-                  final ok = await ref
-                      .read(sdkProvider)
-                      .connect(id, autoReconnect: true);
+                  final kind = ref.read(adapterKindProvider);
+                  bool ok;
+                  if (kind == AdapterKind.mock) {
+                    ok = await ref.read(sdkProvider).connect(id);
+                  } else {
+                    final reconnect = ref.read(bleReconnectProvider.notifier);
+                    reconnect.setAutoReconnect(true);
+                    ok = await reconnect.connect(id);
+                  }
                   ref.read(connectedProvider.notifier).state = ok;
-                  _snack(context, ok ? '${t.connectedTo} $id' : t.couldNotConnect);
+                  _snack(
+                    context,
+                    ok ? '${t.connectedTo} $id' : t.couldNotConnect,
+                  );
                   await Prefs.saveLastDevice(id);
 
                   if (ok && context.mounted) {
-                    final dev = ref.read(devicesProvider).firstWhere(
+                    final dev = ref
+                        .read(devicesProvider)
+                        .firstWhere(
                           (e) => e.id == id,
                           orElse: () => WearDevice(id: id, name: t.device),
                         );
@@ -285,7 +335,9 @@ class _CompactIconButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.7),
+          color: Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest.withOpacity(0.7),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
@@ -311,12 +363,16 @@ class _CompactStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final t = T(ProviderScope.containerOf(context, listen: false).read(localeProvider));
+    final t = T(
+      ProviderScope.containerOf(context, listen: false).read(localeProvider),
+    );
     final deviceName = selectedId != null
-        ? devices.firstWhere(
-            (d) => d.id == selectedId,
-            orElse: () => WearDevice(id: selectedId!, name: t.device),
-          ).name
+        ? devices
+              .firstWhere(
+                (d) => d.id == selectedId,
+                orElse: () => WearDevice(id: selectedId!, name: t.device),
+              )
+              .name
         : null;
 
     return Container(
@@ -365,7 +421,8 @@ class _CompactStatusCard extends StatelessWidget {
                   Text(
                     deviceName,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: (isConnected ? Colors.green : Colors.blue).shade700,
+                      color:
+                          (isConnected ? Colors.green : Colors.blue).shade700,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -395,10 +452,7 @@ class _CompactStatusCard extends StatelessWidget {
 }
 
 class _CompactEmergencyButton extends StatelessWidget {
-  const _CompactEmergencyButton({
-    required this.onPressed,
-    required this.text,
-  });
+  const _CompactEmergencyButton({required this.onPressed, required this.text});
 
   final VoidCallback onPressed;
   final String text;
@@ -461,12 +515,25 @@ class _CompactAdapterSelector extends ConsumerWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: Row(
         children: [
+          Expanded(
+            child: _AdapterOption(
+              title: 'MOCK',
+              isSelected: kind == AdapterKind.mock,
+              onTap: () {
+                ref.read(adapterKindProvider.notifier).state = AdapterKind.mock;
+                onChanged?.call(AdapterKind.mock);
+              },
+            ),
+          ),
+          Container(
+            width: 1,
+            height: 24,
+            color: theme.colorScheme.outline.withOpacity(0.2),
+          ),
           Expanded(
             child: _AdapterOption(
               title: 'BLE',
@@ -477,7 +544,11 @@ class _CompactAdapterSelector extends ConsumerWidget {
               },
             ),
           ),
-          Container(width: 1, height: 24, color: theme.colorScheme.outline.withOpacity(0.2)),
+          Container(
+            width: 1,
+            height: 24,
+            color: theme.colorScheme.outline.withOpacity(0.2),
+          ),
           Expanded(
             child: _AdapterOption(
               title: 'SDK',
@@ -558,7 +629,9 @@ class _CompactScanButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: theme.colorScheme.primaryContainer,
           foregroundColor: theme.colorScheme.onPrimaryContainer,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           padding: const EdgeInsets.symmetric(horizontal: 12),
         ),
         icon: scanning
@@ -597,7 +670,9 @@ class _CompactDeviceList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final t = T(ProviderScope.containerOf(context, listen: false).read(localeProvider));
+    final t = T(
+      ProviderScope.containerOf(context, listen: false).read(localeProvider),
+    );
 
     if (devices.isEmpty) {
       return Container(
@@ -606,9 +681,7 @@ class _CompactDeviceList extends StatelessWidget {
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: theme.colorScheme.outline.withOpacity(0.2),
-          ),
+          border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -634,9 +707,7 @@ class _CompactDeviceList extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: ListView.separated(
         padding: const EdgeInsets.all(8),
@@ -693,7 +764,9 @@ class _CompactDeviceList extends StatelessWidget {
                           Text(
                             device.id,
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.6,
+                              ),
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -715,6 +788,75 @@ class _CompactDeviceList extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Banner care apare când se reconectează automat la device.
+class _ReconnectBanner extends ConsumerWidget {
+  final int retryCount;
+  final String? lastError;
+
+  const _ReconnectBanner({required this.retryCount, this.lastError});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final t = T(ref.watch(localeProvider));
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.orange.shade50, Colors.orange.shade100],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.orange,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.sync, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  t.reconnecting,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.orange.shade800,
+                  ),
+                ),
+                Text(
+                  t.retryAttempt(retryCount, 10),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: Colors.orange,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -744,10 +886,7 @@ class _CompactConnectFAB extends StatelessWidget {
         icon: const Icon(Icons.link, size: 20),
         label: Text(
           connectText,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),

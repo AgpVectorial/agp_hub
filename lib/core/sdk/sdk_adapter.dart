@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/services.dart';
 
 import 'models.dart';
@@ -34,7 +35,9 @@ class MethodChannelWearSdk implements WearSdk {
   Future<List<WearDevice>> scan() async {
     final res = await _ch.invokeMethod('scan');
     final List list = (res is List) ? res : [];
-    return list.map((e) => WearDevice.fromMap(Map<String, dynamic>.from(e))).toList();
+    return list
+        .map((e) => WearDevice.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   @override
@@ -68,7 +71,10 @@ class MethodChannelWearSdk implements WearSdk {
 
   @override
   Stream<int> heartRateStream(String deviceId) {
-    _perDeviceCtrls.putIfAbsent(deviceId, () => StreamController<int>.broadcast());
+    _perDeviceCtrls.putIfAbsent(
+      deviceId,
+      () => StreamController<int>.broadcast(),
+    );
     _ensureHrStream();
     return _perDeviceCtrls[deviceId]!.stream;
   }
@@ -100,5 +106,72 @@ class MethodChannelWearSdk implements WearSdk {
     }
     _perDeviceCtrls.clear();
     _activeHrDeviceId = null;
+  }
+}
+
+/// Mockup WearSdk – date fictive, fără BLE real.
+class MockWearSdk implements WearSdk {
+  final _rnd = Random();
+  final Map<String, StreamController<int>> _hrCtrls = {};
+  Timer? _hrTimer;
+
+  static const _fakeDevices = [
+    WearDevice(id: 'AA:BB:CC:DD:EE:01', name: 'AGP Ring Pro', rssi: -55),
+    WearDevice(id: 'AA:BB:CC:DD:EE:02', name: 'AGP Band Lite', rssi: -62),
+    WearDevice(id: 'AA:BB:CC:DD:EE:03', name: 'GreenOrange HR+', rssi: -70),
+  ];
+
+  @override
+  Future<List<WearDevice>> scan() async {
+    // Simulăm scanare 2 secunde
+    await Future.delayed(const Duration(seconds: 2));
+    return _fakeDevices;
+  }
+
+  @override
+  Future<bool> connect(String deviceId, {bool autoReconnect = true}) async {
+    await Future.delayed(const Duration(milliseconds: 800));
+    return true; // mereu succes în mock
+  }
+
+  @override
+  Future<WearMetrics> readMetrics(String deviceId) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    return WearMetrics(
+      heartRate: 65 + _rnd.nextInt(25),
+      steps: 3000 + _rnd.nextInt(8000),
+      battery: 40 + _rnd.nextInt(55),
+      spo2: 95 + _rnd.nextInt(5),
+      calories: 120 + _rnd.nextInt(300),
+    );
+  }
+
+  @override
+  Future<void> startHeartRateNotifications(String deviceId) async {
+    _hrCtrls.putIfAbsent(deviceId, () => StreamController<int>.broadcast());
+    _hrTimer?.cancel();
+    var bpm = 68 + _rnd.nextInt(10);
+    _hrTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
+      bpm += [-1, 0, 0, 1][_rnd.nextInt(4)];
+      bpm = bpm.clamp(55, 110);
+      _hrCtrls[deviceId]?.add(bpm);
+    });
+  }
+
+  @override
+  Future<void> stopHeartRateNotifications(String deviceId) async {
+    _hrTimer?.cancel();
+    _hrTimer = null;
+  }
+
+  @override
+  Stream<int> heartRateStream(String deviceId) {
+    _hrCtrls.putIfAbsent(deviceId, () => StreamController<int>.broadcast());
+    return _hrCtrls[deviceId]!.stream;
+  }
+
+  @override
+  Stream<ConnectionUpdate> connectionUpdates(String deviceId) async* {
+    yield ConnectionUpdate(deviceId, true);
   }
 }

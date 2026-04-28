@@ -195,12 +195,12 @@ class _EkgPageState extends ConsumerState<EkgPage> with WidgetsBindingObserver {
                 ),
                 _StatusBox(
                   icon: Icons.speed_rounded,
-                  label: '${_speedMmPerSec} ${t.mmPerSec}',
+                  label: '$_speedMmPerSec ${t.mmPerSec}',
                   color: onSurfaceDim,
                 ),
                 _StatusBox(
                   icon: Icons.bar_chart_rounded,
-                  label: '${_gainMmPerMv} ${t.mmPerMv}',
+                  label: '$_gainMmPerMv ${t.mmPerMv}',
                   color: onSurfaceDim,
                 ),
               ],
@@ -447,7 +447,9 @@ class _EcgPainter extends CustomPainter {
     final xStep = size.width / (visibleSamples - 1);
 
     int startIndex = (writeIndex - visibleSamples);
-    while (startIndex < 0) startIndex += samples.length;
+    while (startIndex < 0) {
+      startIndex += samples.length;
+    }
 
     for (int i = 0; i < visibleSamples; i++) {
       final idx = (startIndex + i) % samples.length;

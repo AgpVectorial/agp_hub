@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'package:flutter/services.dart';
 
 import 'models.dart';
@@ -8,6 +7,7 @@ abstract class WearSdk {
   Future<List<WearDevice>> scan();
   Future<bool> connect(String deviceId, {bool autoReconnect = true});
   Future<WearMetrics> readMetrics(String deviceId);
+  Future<({bool connected, String? deviceId})> getConnectionStatus();
 
   Future<void> startHeartRateNotifications(String deviceId);
   Future<void> stopHeartRateNotifications(String deviceId);
@@ -25,11 +25,15 @@ class ConnectionUpdate {
 class MethodChannelWearSdk implements WearSdk {
   static const MethodChannel _ch = MethodChannel('agp_sdk');
   static const EventChannel _hrEvent = EventChannel('agp_sdk/hr_stream');
+  static const EventChannel _connEvent = EventChannel('agp_sdk/conn_stream');
 
   String? _activeHrDeviceId;
   Stream<int>? _sharedHrStream;
   StreamSubscription<dynamic>? _sharedSub;
   final Map<String, StreamController<int>> _perDeviceCtrls = {};
+
+  Stream<dynamic>? _connStream;
+  final Map<String, StreamController<ConnectionUpdate>> _connCtrls = {};
 
   @override
   Future<List<WearDevice>> scan() async {
@@ -37,7 +41,55 @@ class MethodChannelWearSdk implements WearSdk {
     final List list = (res is List) ? res : [];
     return list
         .map((e) => WearDevice.fromMap(Map<String, dynamic>.from(e)))
+        .where(_isBraceletDevice)
         .toList();
+  }
+
+  /// Filtrare: păstrează doar dispozitivele care par brățări/wearable.
+  /// Exclude telefoane, TV-uri, difuzoare, laptopuri, etc.
+  static bool _isBraceletDevice(WearDevice d) {
+    final name = d.name.toLowerCase().trim();
+    // MAC-only devices (no name) — could be bracelet
+    if (name.isEmpty || name == d.id.toLowerCase()) return true;
+    // Explicit wearable keywords
+    const wearableHints = [
+      'band', 'bracelet', 'watch', 'smart', 'fit', 'ring',
+      'qc', 'qring', 'wear', 'health', 'sport', 'hr',
+      'mi band', 'amazfit', 'huawei band', 'galaxy fit',
+    ];
+    for (final hint in wearableHints) {
+      if (name.contains(hint)) return true;
+    }
+    // Exclude known non-wearable patterns
+    const excludeHints = [
+      'phone', 'iphone', 'samsung', 'galaxy s', 'galaxy a', 'galaxy note',
+      'pixel', 'oneplus', 'huawei p', 'huawei mate', 'oppo', 'vivo', 'xiaomi',
+      'redmi', 'poco', 'realme', 'motorola', 'nokia', 'lg', 'sony',
+      'tv', 'speaker', 'soundbar', 'headphone', 'earphone', 'earbud',
+      'airpod', 'buds', 'jbl', 'bose', 'laptop', 'desktop', 'printer',
+      'keyboard', 'mouse', 'controller', 'gamepad',
+      'tile', 'airtag', 'beacon', 'car', 'obd',
+    ];
+    for (final ex in excludeHints) {
+      if (name.contains(ex)) return false;
+    }
+    // Allow through — unknown devices might be bracelets
+    return true;
+  }
+
+  @override
+  Future<({bool connected, String? deviceId})> getConnectionStatus() async {
+    try {
+      final res = await _ch.invokeMethod('getConnectionStatus');
+      if (res is Map) {
+        final map = Map<String, dynamic>.from(res);
+        return (
+          connected: map['connected'] == true,
+          deviceId: map['deviceId'] as String?,
+        );
+      }
+    } catch (_) {}
+    return (connected: false, deviceId: null);
   }
 
   @override
@@ -46,11 +98,14 @@ class MethodChannelWearSdk implements WearSdk {
     return ok == true;
   }
 
+  Future<void> disconnect() async {
+    await _ch.invokeMethod('disconnect');
+  }
+
   @override
   Future<WearMetrics> readMetrics(String deviceId) async {
     final res = await _ch.invokeMethod('readMetrics', {'id': deviceId});
     final map = Map<String, dynamic>.from(res as Map);
-    // asigurăm cheile opționale
     map.putIfAbsent('spo2', () => null);
     map.putIfAbsent('calories', () => null);
     return WearMetrics.fromMap(map);
@@ -80,9 +135,13 @@ class MethodChannelWearSdk implements WearSdk {
   }
 
   @override
-  Stream<ConnectionUpdate> connectionUpdates(String deviceId) async* {
-    // momentan nu avem event channel pentru connection; BLE adapter îl acoperă
-    yield* const Stream<ConnectionUpdate>.empty();
+  Stream<ConnectionUpdate> connectionUpdates(String deviceId) {
+    _connCtrls.putIfAbsent(
+      deviceId,
+      () => StreamController<ConnectionUpdate>.broadcast(),
+    );
+    _ensureConnStream();
+    return _connCtrls[deviceId]!.stream;
   }
 
   Future<void> _ensureHrStream() async {
@@ -99,6 +158,20 @@ class MethodChannelWearSdk implements WearSdk {
     });
   }
 
+  void _ensureConnStream() {
+    if (_connStream != null) return;
+    _connStream = _connEvent.receiveBroadcastStream();
+    _connStream!.listen((dynamic event) {
+      if (event is Map) {
+        final id = event['deviceId'] as String?;
+        final connected = event['connected'] as bool? ?? false;
+        if (id != null) {
+          _connCtrls[id]?.add(ConnectionUpdate(id, connected));
+        }
+      }
+    });
+  }
+
   void dispose() {
     _sharedSub?.cancel();
     for (final c in _perDeviceCtrls.values) {
@@ -106,72 +179,5 @@ class MethodChannelWearSdk implements WearSdk {
     }
     _perDeviceCtrls.clear();
     _activeHrDeviceId = null;
-  }
-}
-
-/// Mockup WearSdk – date fictive, fără BLE real.
-class MockWearSdk implements WearSdk {
-  final _rnd = Random();
-  final Map<String, StreamController<int>> _hrCtrls = {};
-  Timer? _hrTimer;
-
-  static const _fakeDevices = [
-    WearDevice(id: 'AA:BB:CC:DD:EE:01', name: 'AGP Ring Pro', rssi: -55),
-    WearDevice(id: 'AA:BB:CC:DD:EE:02', name: 'AGP Band Lite', rssi: -62),
-    WearDevice(id: 'AA:BB:CC:DD:EE:03', name: 'GreenOrange HR+', rssi: -70),
-  ];
-
-  @override
-  Future<List<WearDevice>> scan() async {
-    // Simulăm scanare 2 secunde
-    await Future.delayed(const Duration(seconds: 2));
-    return _fakeDevices;
-  }
-
-  @override
-  Future<bool> connect(String deviceId, {bool autoReconnect = true}) async {
-    await Future.delayed(const Duration(milliseconds: 800));
-    return true; // mereu succes în mock
-  }
-
-  @override
-  Future<WearMetrics> readMetrics(String deviceId) async {
-    await Future.delayed(const Duration(milliseconds: 300));
-    return WearMetrics(
-      heartRate: 65 + _rnd.nextInt(25),
-      steps: 3000 + _rnd.nextInt(8000),
-      battery: 40 + _rnd.nextInt(55),
-      spo2: 95 + _rnd.nextInt(5),
-      calories: 120 + _rnd.nextInt(300),
-    );
-  }
-
-  @override
-  Future<void> startHeartRateNotifications(String deviceId) async {
-    _hrCtrls.putIfAbsent(deviceId, () => StreamController<int>.broadcast());
-    _hrTimer?.cancel();
-    var bpm = 68 + _rnd.nextInt(10);
-    _hrTimer = Timer.periodic(const Duration(milliseconds: 1200), (_) {
-      bpm += [-1, 0, 0, 1][_rnd.nextInt(4)];
-      bpm = bpm.clamp(55, 110);
-      _hrCtrls[deviceId]?.add(bpm);
-    });
-  }
-
-  @override
-  Future<void> stopHeartRateNotifications(String deviceId) async {
-    _hrTimer?.cancel();
-    _hrTimer = null;
-  }
-
-  @override
-  Stream<int> heartRateStream(String deviceId) {
-    _hrCtrls.putIfAbsent(deviceId, () => StreamController<int>.broadcast());
-    return _hrCtrls[deviceId]!.stream;
-  }
-
-  @override
-  Stream<ConnectionUpdate> connectionUpdates(String deviceId) async* {
-    yield ConnectionUpdate(deviceId, true);
   }
 }

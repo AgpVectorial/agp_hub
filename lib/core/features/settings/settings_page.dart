@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../theme.dart';
 import '../../i18n/locale.dart';
+import '../../storage/user_repository.dart';
+import '../../sdk/sdk_provider.dart';
+import '../home/home_page.dart' show connectedProvider, selectedIdProvider;
 
 // importuri (poți lăsa chiar dacă ai deja link-urile)
 import 'terms_page.dart';
@@ -13,6 +15,12 @@ import 'about_app_page.dart';
 import '../vitals/ekg_page.dart';
 // 👇 NOU: link Ciclul menstrual
 import '../vitals/menstrual_cycle_page.dart';
+
+// ── Pagini noi (cloud, securitate, sampling, QA) ──
+import 'cloud_settings_page.dart';
+import 'security_settings_page.dart';
+import 'sampling_policy_page.dart';
+import 'qa_panel_page.dart';
 
 /// ====== CHEI PERSISTENȚĂ ======
 const _kAdapter = 'settings.adapter'; // 'ble' | 'sdk'
@@ -25,27 +33,29 @@ const _kUserAge = 'user.age';
 const _kUserWeight = 'user.weight';
 const _kUserHeight = 'user.height';
 const _kUserEmergencyPhone = 'user.emergency_phone';
-const _kActivityType = 'user.activity_type'; // 'sedentary' | 'moderate' | 'active'
+const _kActivityType =
+    'user.activity_type'; // 'sedentary' | 'moderate' | 'active'
 
 enum ActivityType { sedentary, moderate, active }
+
 extension ActivityTypeCode on ActivityType {
   String get code => switch (this) {
-        ActivityType.sedentary => 'sedentary',
-        ActivityType.moderate => 'moderate',
-        ActivityType.active => 'active',
-      };
+    ActivityType.sedentary => 'sedentary',
+    ActivityType.moderate => 'moderate',
+    ActivityType.active => 'active',
+  };
   static ActivityType fromCode(String? c) => switch (c) {
-        'moderate' => ActivityType.moderate,
-        'active' => ActivityType.active,
-        _ => ActivityType.sedentary,
-      };
+    'moderate' => ActivityType.moderate,
+    'active' => ActivityType.active,
+    _ => ActivityType.sedentary,
+  };
 }
 
 /// ====== STARE & PROVIDER ======
 final settingsProvider =
     StateNotifierProvider<SettingsController, AsyncValue<SettingsState>>(
-  (ref) => SettingsController(),
-);
+      (ref) => SettingsController(ref),
+    );
 
 class SettingsState {
   // tehnice
@@ -102,7 +112,7 @@ class SettingsState {
   }
 
   static const empty = SettingsState(
-    adapter: 'ble',
+    adapter: 'sdk',
     autoReconnect: true,
     autoStartHr: false,
     pollIntervalSec: 5,
@@ -116,14 +126,15 @@ class SettingsState {
 }
 
 class SettingsController extends StateNotifier<AsyncValue<SettingsState>> {
-  SettingsController() : super(const AsyncLoading()) {
+  final Ref _ref;
+  SettingsController(this._ref) : super(const AsyncLoading()) {
     _load();
   }
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     final s = SettingsState(
-      adapter: p.getString(_kAdapter) ?? 'ble',
+      adapter: p.getString(_kAdapter) ?? 'sdk', // Citim preferința reală
       autoReconnect: p.getBool(_kAutoReconnect) ?? true,
       autoStartHr: p.getBool(_kAutoStartHr) ?? false,
       pollIntervalSec: p.getInt(_kPollInterval) ?? 5,
@@ -136,6 +147,9 @@ class SettingsController extends StateNotifier<AsyncValue<SettingsState>> {
     );
     state = AsyncData(s);
   }
+
+  /// Reîncarcă setările (apelat după schimbarea utilizatorului).
+  Future<void> reload() async => _load();
 
   Future<void> _save(SettingsState s) async {
     final p = await SharedPreferences.getInstance();
@@ -166,6 +180,12 @@ class SettingsController extends StateNotifier<AsyncValue<SettingsState>> {
     );
     state = AsyncData(next);
     await _save(next);
+
+    // Sincronizăm adapter_kind pentru home_page (care citește din prefs)
+    if (adapter != null) {
+      final p = await SharedPreferences.getInstance();
+      await p.setString('adapter_kind', adapter);
+    }
   }
 
   Future<void> saveUserProfile({
@@ -187,6 +207,22 @@ class SettingsController extends StateNotifier<AsyncValue<SettingsState>> {
     );
     state = AsyncData(next);
     await _save(next);
+
+    // Persistă și în SQLite (UserProfile) dacă avem user activ
+    final session = _ref.read(userSessionProvider);
+    if (session != null && session.id != null) {
+      final repo = _ref.read(userRepositoryProvider);
+      final updated = session.copyWith(
+        displayName: name,
+        age: age > 0 ? age : null,
+        weightKg: weightKg > 0 ? weightKg : null,
+        heightCm: heightCm > 0 ? heightCm : null,
+        emergencyPhone: emergencyPhone.isNotEmpty ? emergencyPhone : null,
+      );
+      await repo.updateUser(updated);
+      // Actualizează și sesiunea cu datele noi
+      _ref.read(userSessionProvider.notifier).refresh();
+    }
   }
 }
 
@@ -278,13 +314,34 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   icon: Icons.settings_bluetooth_rounded,
                   child: Column(
                     children: [
-                      _AdapterRow(
-                        bleLabel: t.adapterBLE,
-                        sdkLabel: t.adapterSDK,
-                        currentAdapter: s.adapter,
-                        onChanged: (adapter) => ref
-                            .read(settingsProvider.notifier)
-                            .updateTechnical(adapter: adapter),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 12,
+                          horizontal: 16,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.primaryContainer.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.memory_rounded,
+                              size: 20,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                            const SizedBox(width: 12),
+                            Text(
+                              'SDK (QC Wireless)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 12),
                       _CompactSwitch(
@@ -341,7 +398,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 icon: Icons.cake_outlined,
                                 keyboardType: TextInputType.number,
                                 inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly
+                                  FilteringTextInputFormatter.digitsOnly,
                                 ],
                                 validator: (v) {
                                   if (_req(t, v) != null) {
@@ -363,10 +420,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                                 icon: Icons.monitor_weight_outlined,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
-                                        decimal: true),
+                                      decimal: true,
+                                    ),
                                 inputFormatters: [
                                   FilteringTextInputFormatter.allow(
-                                      RegExp(r'[0-9.]'))
+                                    RegExp(r'[0-9.]'),
+                                  ),
                                 ],
                                 validator: (v) {
                                   if (_req(t, v) != null) {
@@ -389,12 +448,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           controller: _height,
                           label: t.heightCm,
                           icon: Icons.height_rounded,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                  decimal: true),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
                           inputFormatters: [
                             FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.]'))
+                              RegExp(r'[0-9.]'),
+                            ),
                           ],
                           validator: (v) {
                             if (_req(t, v) != null) return t.requiredField;
@@ -418,8 +478,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           validator: (v) {
                             if (_req(t, v) != null) return t.requiredField;
                             final s2 = v!.trim();
-                            final ok = RegExp(r'^[+0-9][0-9\s-]{6,}$')
-                                .hasMatch(s2);
+                            final ok = RegExp(
+                              r'^[+0-9][0-9\s-]{6,}$',
+                            ).hasMatch(s2);
                             return ok ? null : t.invalidPhone;
                           },
                         ),
@@ -432,8 +493,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                           sedentaryLabel: t.sedentary,
                           moderateLabel: t.moderate,
                           activeLabel: t.active,
-                          onChanged: (v) => setState(() =>
-                              _activity = v ?? ActivityType.sedentary),
+                          onChanged: (v) => setState(
+                            () => _activity = v ?? ActivityType.sedentary,
+                          ),
                         ),
 
                         const SizedBox(height: 20),
@@ -454,10 +516,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                               if (!_formKey.currentState!.validate()) return;
                               final name = _name.text.trim();
                               final age = int.parse(_age.text.trim());
-                              final weight =
-                                  double.parse(_weight.text.trim());
-                              final height =
-                                  double.parse(_height.text.trim());
+                              final weight = double.parse(_weight.text.trim());
+                              final height = double.parse(_height.text.trim());
                               final phone = _phone.text.trim();
 
                               await ref
@@ -489,8 +549,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         Text(
                           t.savedLocally,
                           style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurface
-                                .withOpacity(0.6),
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -513,8 +572,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         subtitle: Text(t.ekgSubtitle), // <- locale
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
+                          // Wire EKG to real HR stream if device is connected
+                          final isConn = ref.read(connectedProvider);
+                          final deviceId = ref.read(selectedIdProvider);
+                          Stream<double>? ekgStream;
+                          if (isConn && deviceId != null) {
+                            final sdk = ref.read(sdkProvider);
+                            ekgStream = sdk
+                                .heartRateStream(deviceId)
+                                .map((s) => s.value.toDouble() / 40.0);
+                          }
                           Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => const EkgPage()),
+                            MaterialPageRoute(
+                              builder: (_) => EkgPage(ekgStream: ekgStream),
+                            ),
                           );
                         },
                       ),
@@ -523,13 +594,115 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       // 👇 NOU: Ciclul menstrual
                       ListTile(
                         leading: const Icon(Icons.water_drop_outlined),
-                        title: Text(t.menstrualCycle),          // <- locale
-                        subtitle: Text(t.menstrualSubtitle),    // <- locale
+                        title: Text(t.menstrualCycle), // <- locale
+                        subtitle: Text(t.menstrualSubtitle), // <- locale
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
                           Navigator.of(context).push(
                             MaterialPageRoute(
                               builder: (_) => const MenstrualCyclePage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                /// ====== CARD: CLOUD & BACKEND ======
+                _SettingsCard(
+                  title: 'Cloud & Backend',
+                  icon: Icons.cloud_rounded,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.cloud_sync_outlined),
+                        title: const Text('Sincronizare & Backup'),
+                        subtitle: const Text('API, cloud sync, acces remote'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const CloudSettingsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                /// ====== CARD: SECURITATE & GDPR ======
+                _SettingsCard(
+                  title: 'Securitate & GDPR',
+                  icon: Icons.security_rounded,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.lock_outlined),
+                        title: const Text('Securitatea datelor'),
+                        subtitle: const Text('Criptare, audit, GDPR'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SecuritySettingsPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                /// ====== CARD: POLITICI DE SAMPLING ======
+                _SettingsCard(
+                  title: 'Politici de Sampling',
+                  icon: Icons.timer_rounded,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.tune_outlined),
+                        title: const Text('Frecvențe & Intervale'),
+                        subtitle: const Text('HR, SpO2, baterie, optimizare'),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const SamplingPolicyPage(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                /// ====== CARD: QA & TESTARE ======
+                _SettingsCard(
+                  title: 'QA & Testare',
+                  icon: Icons.bug_report_rounded,
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: const Icon(Icons.checklist_outlined),
+                        title: const Text('Plan de testare'),
+                        subtitle: const Text(
+                          'BLE, reconectare, background, iOS',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const QaPanelPage(),
                             ),
                           );
                         },
@@ -551,9 +724,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         title: Text(t.terms), // <- locale
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
-                          Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) =>
-                                  const TermsAndConditionsPage()));
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const TermsAndConditionsPage(),
+                            ),
+                          );
                         },
                       ),
                       const Divider(height: 1),
@@ -563,8 +738,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                         subtitle: Text(t.nonMedicalApp), // <- locale
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
-                          Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) => const AboutAppPage()));
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const AboutAppPage(),
+                            ),
+                          );
                         },
                       ),
                     ],
@@ -603,8 +781,9 @@ class _SafeScrollableBody extends StatelessWidget {
     // Dacă SafeArea nu adaugă padding jos (MIUI raportează 0),
     // folosim gesturile sistemului ca fallback.
     final bool safeIsZero = mq.padding.bottom == 0.0;
-    final double gestureFallback =
-        safeIsZero ? mq.systemGestureInsets.bottom : 0.0;
+    final double gestureFallback = safeIsZero
+        ? mq.systemGestureInsets.bottom
+        : 0.0;
 
     // SafeArea(bottom:true) va adăuga deja mq.padding.bottom.
     // Noi adăugăm DOAR: fallback (dacă e nevoie) + tastatură + extra.
@@ -646,9 +825,7 @@ class _SettingsCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
             color: theme.colorScheme.shadow.withOpacity(0.05),
@@ -726,15 +903,16 @@ class _LanguageDropdown extends ConsumerWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: Row(
         children: [
           const SizedBox(width: 4),
-          Icon(Icons.language_rounded,
-              size: 20, color: theme.colorScheme.onSurface.withOpacity(0.75)),
+          Icon(
+            Icons.language_rounded,
+            size: 20,
+            color: theme.colorScheme.onSurface.withOpacity(0.75),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: DropdownButtonHideUnderline(
@@ -743,7 +921,8 @@ class _LanguageDropdown extends ConsumerWidget {
                 value: current,
                 borderRadius: BorderRadius.circular(12),
                 items: AppLang.values.map((lang) {
-                  final label = _langNamesNative[lang] ?? lang.code.toUpperCase();
+                  final label =
+                      _langNamesNative[lang] ?? lang.code.toUpperCase();
                   return DropdownMenuItem<AppLang>(
                     value: lang,
                     child: Row(
@@ -783,9 +962,7 @@ class _FlagCircle extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.primaryContainer,
         borderRadius: BorderRadius.circular(13),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.12),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.12)),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -831,9 +1008,10 @@ class _AdapterRow extends StatelessWidget {
             ),
           ),
           Container(
-              width: 1,
-              height: 32,
-              color: theme.colorScheme.outline.withOpacity(0.2)),
+            width: 1,
+            height: 32,
+            color: theme.colorScheme.outline.withOpacity(0.2),
+          ),
           Expanded(
             child: _AdapterOption(
               title: sdkLabel,
@@ -906,12 +1084,7 @@ class _CompactSwitch extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              title,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          Expanded(child: Text(title, style: theme.textTheme.bodyMedium)),
           Switch(
             value: value,
             onChanged: onChanged,
@@ -950,11 +1123,14 @@ class _PollIntervalRow extends StatelessWidget {
             child: TextFormField(
               initialValue: currentValue.toString(),
               decoration: InputDecoration(
-                border:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 8,
+                ),
               ),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -1009,13 +1185,15 @@ class _CompactTextField extends StatelessWidget {
         prefixIcon: Icon(icon, size: 20),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+          borderSide: BorderSide(
+            color: theme.colorScheme.outline.withOpacity(0.3),
+          ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: theme.colorScheme.outline.withOpacity(0.3)),
+          borderSide: BorderSide(
+            color: theme.colorScheme.outline.withOpacity(0.3),
+          ),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -1023,8 +1201,10 @@ class _CompactTextField extends StatelessWidget {
         ),
         filled: true,
         fillColor: theme.colorScheme.surfaceContainerLowest,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
       ),
     );
   }
@@ -1053,8 +1233,7 @@ class _ActivityDropdown extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        border:
-            Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.3)),
         borderRadius: BorderRadius.circular(12),
         color: theme.colorScheme.surfaceContainerLowest,
       ),
@@ -1062,8 +1241,11 @@ class _ActivityDropdown extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: Row(
           children: [
-            Icon(Icons.directions_run_outlined, size: 20,
-                color: theme.colorScheme.onSurface.withOpacity(0.7)),
+            Icon(
+              Icons.directions_run_outlined,
+              size: 20,
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: DropdownButtonHideUnderline(
@@ -1074,13 +1256,17 @@ class _ActivityDropdown extends StatelessWidget {
                   onChanged: onChanged,
                   items: [
                     DropdownMenuItem(
-                        value: ActivityType.sedentary,
-                        child: Text(sedentaryLabel)),
+                      value: ActivityType.sedentary,
+                      child: Text(sedentaryLabel),
+                    ),
                     DropdownMenuItem(
-                        value: ActivityType.moderate,
-                        child: Text(moderateLabel)),
+                      value: ActivityType.moderate,
+                      child: Text(moderateLabel),
+                    ),
                     DropdownMenuItem(
-                        value: ActivityType.active, child: Text(activeLabel)),
+                      value: ActivityType.active,
+                      child: Text(activeLabel),
+                    ),
                   ],
                 ),
               ),

@@ -1,8 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../theme.dart';
 import '../../i18n/locale.dart';
+import '../../errors/app_error.dart';
+import 'error_log_page.dart';
 
 class DiagnosticsPage extends ConsumerStatefulWidget {
   const DiagnosticsPage({super.key});
@@ -15,25 +16,36 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
   bool _loading = false;
 
   @override
-  void initState() { super.initState(); _refresh(); }
+  void initState() {
+    super.initState();
+    _refresh();
+  }
 
   Future<Map<String, dynamic>> blePermissionsDebugInfo() async {
     final m = <String, dynamic>{};
-    try { m['os'] = Platform.operatingSystem; } catch (_) {}
-    try { m['osVersion'] = Platform.operatingSystemVersion; } catch (_) {}
-    try { m['locale'] = Platform.localeName; } catch (_) {}
-    try { m['cpuCores'] = Platform.numberOfProcessors; } catch (_) {}
+    try {
+      m['os'] = Platform.operatingSystem;
+    } catch (_) {}
+    try {
+      m['osVersion'] = Platform.operatingSystemVersion;
+    } catch (_) {}
+    try {
+      m['locale'] = Platform.localeName;
+    } catch (_) {}
+    try {
+      m['cpuCores'] = Platform.numberOfProcessors;
+    } catch (_) {}
     return m;
   }
 
   Future<void> _refresh() async {
     setState(() => _loading = true);
-    try { 
-      final i = await blePermissionsDebugInfo(); 
-      if (!mounted) return; 
-      setState(() => _info = i); 
-    } finally { 
-      if (mounted) setState(() => _loading = false); 
+    try {
+      final i = await blePermissionsDebugInfo();
+      if (!mounted) return;
+      setState(() => _info = i);
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -42,7 +54,7 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
     final t = T(ref.watch(localeProvider));
     final theme = Theme.of(context);
     final entries = (_info ?? const <String, dynamic>{}).entries.toList()
-      ..sort((a,b) => a.key.compareTo(b.key));
+      ..sort((a, b) => a.key.compareTo(b.key));
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -56,6 +68,48 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
         backgroundColor: Colors.transparent,
         actions: [
           Container(
+            margin: const EdgeInsets.only(right: 4),
+            child: IconButton(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ErrorLogPage()),
+              ),
+              tooltip: 'Error Log',
+              icon: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                    0.7,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: theme.colorScheme.outline.withOpacity(0.2),
+                  ),
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(Icons.bug_report_rounded, size: 20),
+                    if (ref.watch(errorHandlerProvider).recentErrors.isNotEmpty)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Container(
             margin: const EdgeInsets.only(right: 8),
             child: IconButton(
               onPressed: _loading ? null : _refresh,
@@ -64,7 +118,9 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.7),
+                  color: theme.colorScheme.surfaceContainerHighest.withOpacity(
+                    0.7,
+                  ),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: theme.colorScheme.outline.withOpacity(0.2),
@@ -92,16 +148,16 @@ class _DiagnosticsPageState extends ConsumerState<DiagnosticsPage> {
               itemCount: entries.length,
               isLoading: _loading,
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Content
             Expanded(
               child: _loading
                   ? _LoadingState()
                   : entries.isEmpty
-                      ? _EmptyState()
-                      : _DiagnosticsGrid(entries: entries),
+                  ? _EmptyState()
+                  : _DiagnosticsGrid(entries: entries),
             ),
           ],
         ),
@@ -140,9 +196,7 @@ class _HeaderCard extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: Row(
         children: [
@@ -212,9 +266,7 @@ class _LoadingState extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -247,9 +299,7 @@ class _EmptyState extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -387,9 +437,7 @@ class _DiagnosticCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: theme.colorScheme.outline.withOpacity(0.2),
-        ),
+        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
         boxShadow: [
           BoxShadow(
             color: theme.colorScheme.shadow.withOpacity(0.05),
@@ -407,11 +455,7 @@ class _DiagnosticCard extends StatelessWidget {
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              size: 20,
-              color: color,
-            ),
+            child: Icon(icon, size: 20, color: color),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -1,33 +1,23 @@
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:agp_wear_hub/core/i18n/locale.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../sdk/sdk_adapter.dart';
 import '../../sdk/models.dart';
-import '../../sdk/flutter_blue_adapter.dart';
-import '../../sdk/ble_reconnect_manager.dart';
 import '../../storage/prefs.dart';
+import '../../storage/user_repository.dart';
+import '../../services/background_service.dart';
 import '../device/device_details_page.dart';
 import '../settings/settings_page.dart';
 import '../diagnostics/diagnostics_page.dart';
 import '../test_panel/test_panel_page.dart';
-
-enum AdapterKind { ble, sdk, mock }
-
-final adapterKindProvider = StateProvider<AdapterKind>((_) => AdapterKind.mock);
+import '../auth/user_profiles_page.dart';
 
 final sdkProvider = Provider<WearSdk>((ref) {
-  final kind = ref.watch(adapterKindProvider);
-  switch (kind) {
-    case AdapterKind.sdk:
-      return MethodChannelWearSdk();
-    case AdapterKind.ble:
-      return FlutterBlueWearSdk();
-    case AdapterKind.mock:
-    default:
-      return MockWearSdk();
-  }
+  return MethodChannelWearSdk();
 });
 
 final devicesProvider = StateProvider<List<WearDevice>>((ref) => []);
@@ -79,12 +69,8 @@ class _HomePageState extends ConsumerState<HomePage>
     _pulseAnimation = Tween<double>(begin: 0.98, end: 1.02).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    _restorePrefsAndReconnect();
-
-    // Sincronizăm connectedProvider cu BleReconnectManager
-    ref.listenManual(bleReconnectProvider, (prev, next) {
-      ref.read(connectedProvider.notifier).state = next.isConnected;
-    });
+    _restoreLastDevice();
+    _checkAutoConnect();
   }
 
   @override
@@ -93,29 +79,48 @@ class _HomePageState extends ConsumerState<HomePage>
     super.dispose();
   }
 
-  Future<void> _restorePrefsAndReconnect() async {
-    final adapter = await Prefs.getAdapter();
-    if (mounted) {
-      ref.read(adapterKindProvider.notifier).state = (adapter == 'sdk')
-          ? AdapterKind.sdk
-          : (adapter == 'ble')
-          ? AdapterKind.ble
-          : AdapterKind.mock;
-    }
+  Future<void> _restoreLastDevice() async {
     final last = await Prefs.getLastDevice();
     if (last != null && mounted) {
       ref.read(selectedIdProvider.notifier).state = last;
-      final kind = ref.read(adapterKindProvider);
-      if (kind == AdapterKind.mock) {
-        // Mock: conectare directă, fără BLE real
-        final ok = await ref.read(sdkProvider).connect(last);
-        if (mounted) ref.read(connectedProvider.notifier).state = ok;
-      } else {
-        // BLE/SDK: reconectarea gestionată via BleReconnectManager
-        final reconnect = ref.read(bleReconnectProvider.notifier);
-        reconnect.setAutoReconnect(true);
-        final ok = await reconnect.connect(last);
-        if (mounted) ref.read(connectedProvider.notifier).state = ok;
+    }
+  }
+
+  /// Verifică dacă brățara e deja conectată (reconectare automată nativă)
+  /// și navighează direct la DeviceDetailsPage.
+  Future<void> _checkAutoConnect() async {
+    // Așteptăm puțin să se stabilizeze reconectarea nativă
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+
+    final sdk = ref.read(sdkProvider);
+    final status = await sdk.getConnectionStatus();
+    if (!mounted) return;
+
+    if (status.connected && status.deviceId != null) {
+      final id = status.deviceId!;
+      ref.read(connectedProvider.notifier).state = true;
+      ref.read(selectedIdProvider.notifier).state = id;
+      await Prefs.saveLastDevice(id);
+
+      // Pornim background service
+      final userId =
+          ref.read(userSessionProvider)?.id?.toString() ?? 'default';
+      ref
+          .read(backgroundServiceProvider.notifier)
+          .start(deviceId: id, userId: userId);
+
+      if (mounted) {
+        final t = T(ref.read(localeProvider));
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DeviceDetailsPage(
+              deviceId: id,
+              initialDisplayName: t.device,
+            ),
+          ),
+        );
       }
     }
   }
@@ -137,7 +142,8 @@ class _HomePageState extends ConsumerState<HomePage>
     final selectedId = ref.watch(selectedIdProvider);
     final isScanning = ref.watch(isScanningProvider);
     final isConnected = ref.watch(connectedProvider);
-    final bleState = ref.watch(bleReconnectProvider);
+    final activeUser = ref.watch(userSessionProvider);
+    final bgState = ref.watch(backgroundServiceProvider);
 
     final t = T(ref.watch(localeProvider));
     final theme = Theme.of(context);
@@ -153,6 +159,21 @@ class _HomePageState extends ConsumerState<HomePage>
         elevation: 0,
         backgroundColor: Colors.transparent,
         actions: [
+          _CompactIconButton(
+            icon: Icons.logout_rounded,
+            tooltip: 'Logout',
+            onPressed: () {
+              ref.read(userSessionProvider.notifier).logout();
+            },
+          ),
+          _CompactIconButton(
+            icon: Icons.people_rounded,
+            tooltip: t.tr('userProfiles'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const UserProfilesPage()),
+            ),
+          ),
           _CompactIconButton(
             icon: Icons.science_rounded,
             tooltip: 'Test Panel',
@@ -185,18 +206,104 @@ class _HomePageState extends ConsumerState<HomePage>
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // Banner reconectare
-              if (bleState.isReconnecting)
-                _ReconnectBanner(
-                  retryCount: bleState.retryCount,
-                  lastError: bleState.lastError,
+              // Banner utilizator activ
+              if (activeUser != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 14,
+                        backgroundColor: theme.colorScheme.primary,
+                        child: Text(
+                          activeUser.displayName.isNotEmpty
+                              ? activeUser.displayName[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          activeUser.displayName,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      if (bgState.isRunning)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.green,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'BG',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
 
               if (isConnected || selectedId != null)
-                _CompactStatusCard(
-                  isConnected: isConnected,
-                  selectedId: selectedId,
-                  devices: devices,
+                GestureDetector(
+                  onTap: isConnected && selectedId != null
+                      ? () {
+                          final dev = devices.firstWhere(
+                            (d) => d.id == selectedId,
+                            orElse: () => WearDevice(id: selectedId!, name: t.device),
+                          );
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => DeviceDetailsPage(
+                                deviceId: selectedId!,
+                                initialDisplayName: dev.name,
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
+                  child: _CompactStatusCard(
+                    isConnected: isConnected,
+                    selectedId: selectedId,
+                    devices: devices,
+                  ),
                 ),
 
               AnimatedBuilder(
@@ -214,17 +321,22 @@ class _HomePageState extends ConsumerState<HomePage>
               Row(
                 children: [
                   Expanded(
-                    child: _CompactAdapterSelector(
-                      onChanged: (k) async {
-                        ref.read(adapterKindProvider.notifier).state = k;
-                        await Prefs.saveAdapter(
-                          k == AdapterKind.sdk
-                              ? 'sdk'
-                              : k == AdapterKind.ble
-                              ? 'ble'
-                              : 'mock',
-                        );
-                      },
+                    child: Container(
+                      height: 48,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.primaryContainer.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'SDK',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -233,13 +345,55 @@ class _HomePageState extends ConsumerState<HomePage>
                     scanText: t.startScan,
                     scanningText: t.scanning,
                     onScan: () async {
+                      // Asigurăm permisiuni BLE/Locație înainte de scan
+                      final statuses = await [
+                        Permission.bluetoothScan,
+                        Permission.bluetoothConnect,
+                        Permission.locationWhenInUse,
+                      ].request();
+
+                      // Verificăm dacă permisiunile au fost acordate
+                      final denied = statuses.entries
+                          .where(
+                            (e) =>
+                                e.value.isDenied || e.value.isPermanentlyDenied,
+                          )
+                          .map((e) => e.key.toString())
+                          .toList();
+                      if (denied.isNotEmpty) {
+                        _snack(
+                          context,
+                          'Permissions denied: ${denied.join(", ")}. Go to Settings → App → Permissions.',
+                        );
+                        return;
+                      }
+
+                      // Verificăm serviciu locație activat
+                      final locationOn = await Permission
+                          .locationWhenInUse
+                          .serviceStatus
+                          .isEnabled;
+                      if (!locationOn) {
+                        _snack(
+                          context,
+                          'Location services are OFF. Turn on GPS/Location for BLE scan.',
+                        );
+                        return;
+                      }
                       ref.read(isScanningProvider.notifier).state = true;
                       try {
                         final list = await ref.read(sdkProvider).scan();
                         ref.read(devicesProvider.notifier).state = list;
-                        if (list.isEmpty) _snack(context, t.noDevices);
+                        if (list.isEmpty) {
+                          _snack(
+                            context,
+                            '${t.noDevices} — ensure device is nearby, powered on, and not already paired.',
+                          );
+                        }
+                      } on PlatformException catch (e) {
+                        _snack(context, 'Scan error: ${e.code} — ${e.message}');
                       } catch (e) {
-                        _snack(context, t.errorScan);
+                        _snack(context, '${t.errorScan}: $e');
                       } finally {
                         ref.read(isScanningProvider.notifier).state = false;
                       }
@@ -271,21 +425,23 @@ class _HomePageState extends ConsumerState<HomePage>
                 final id = ref.read(selectedIdProvider);
                 if (id == null) return;
                 try {
-                  final kind = ref.read(adapterKindProvider);
-                  bool ok;
-                  if (kind == AdapterKind.mock) {
-                    ok = await ref.read(sdkProvider).connect(id);
-                  } else {
-                    final reconnect = ref.read(bleReconnectProvider.notifier);
-                    reconnect.setAutoReconnect(true);
-                    ok = await reconnect.connect(id);
-                  }
+                  final ok = await ref.read(sdkProvider).connect(id);
                   ref.read(connectedProvider.notifier).state = ok;
                   _snack(
                     context,
                     ok ? '${t.connectedTo} $id' : t.couldNotConnect,
                   );
                   await Prefs.saveLastDevice(id);
+
+                  // Pornim background service
+                  if (ok) {
+                    final userId =
+                        ref.read(userSessionProvider)?.id?.toString() ??
+                        'default';
+                    ref
+                        .read(backgroundServiceProvider.notifier)
+                        .start(deviceId: id, userId: userId);
+                  }
 
                   if (ok && context.mounted) {
                     final dev = ref
@@ -501,109 +657,6 @@ class _CompactEmergencyButton extends StatelessWidget {
   }
 }
 
-class _CompactAdapterSelector extends ConsumerWidget {
-  const _CompactAdapterSelector({this.onChanged});
-  final void Function(AdapterKind)? onChanged;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final kind = ref.watch(adapterKindProvider);
-    final theme = Theme.of(context);
-
-    return Container(
-      height: 48,
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: theme.colorScheme.outline.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: _AdapterOption(
-              title: 'MOCK',
-              isSelected: kind == AdapterKind.mock,
-              onTap: () {
-                ref.read(adapterKindProvider.notifier).state = AdapterKind.mock;
-                onChanged?.call(AdapterKind.mock);
-              },
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 24,
-            color: theme.colorScheme.outline.withOpacity(0.2),
-          ),
-          Expanded(
-            child: _AdapterOption(
-              title: 'BLE',
-              isSelected: kind == AdapterKind.ble,
-              onTap: () {
-                ref.read(adapterKindProvider.notifier).state = AdapterKind.ble;
-                onChanged?.call(AdapterKind.ble);
-              },
-            ),
-          ),
-          Container(
-            width: 1,
-            height: 24,
-            color: theme.colorScheme.outline.withOpacity(0.2),
-          ),
-          Expanded(
-            child: _AdapterOption(
-              title: 'SDK',
-              isSelected: kind == AdapterKind.sdk,
-              onTap: () {
-                ref.read(adapterKindProvider.notifier).state = AdapterKind.sdk;
-                onChanged?.call(AdapterKind.sdk);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AdapterOption extends StatelessWidget {
-  const _AdapterOption({
-    required this.title,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  final String title;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Material(
-      color: isSelected ? theme.colorScheme.primary : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          child: Text(
-            title,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-              color: isSelected
-                  ? theme.colorScheme.onPrimary
-                  : theme.colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _CompactScanButton extends StatelessWidget {
   const _CompactScanButton({
     required this.scanning,
@@ -788,75 +841,6 @@ class _CompactDeviceList extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-/// Banner care apare când se reconectează automat la device.
-class _ReconnectBanner extends ConsumerWidget {
-  final int retryCount;
-  final String? lastError;
-
-  const _ReconnectBanner({required this.retryCount, this.lastError});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final t = T(ref.watch(localeProvider));
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.orange.shade50, Colors.orange.shade100],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: Colors.orange,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.sync, color: Colors.white, size: 20),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  t.reconnecting,
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.orange.shade800,
-                  ),
-                ),
-                Text(
-                  t.retryAttempt(retryCount, 10),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: Colors.orange.shade700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              color: Colors.orange,
-            ),
-          ),
-        ],
       ),
     );
   }

@@ -7,10 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 
-import '../../i18n/locale.dart';
-import '../../sdk/sdk_provider.dart';
 import '../../storage/vitals_db.dart';
-import '../../models/vitals.dart';
+import '../../storage/user_repository.dart';
 import '../device/device_details_page.dart';
 import '../history/history_page.dart';
 
@@ -365,7 +363,11 @@ class _TestPanelPageState extends ConsumerState<TestPanelPage> {
   // ─── Simulare date DB ──────────────────────────────────────────
 
   Future<void> _generateHistoryData() async {
-    _addLog('📊 Se generează date istorice...', color: Colors.purple);
+    final userId = ref.read(userSessionProvider.notifier).userId;
+    _addLog(
+      '📊 Se generează date istorice (user: $userId)...',
+      color: Colors.purple,
+    );
     final db = VitalsDatabase();
     final now = DateTime.now();
     final records = <VitalRecord>[];
@@ -378,30 +380,35 @@ class _TestPanelPageState extends ConsumerState<TestPanelPage> {
           type: VitalType.hr,
           value: (65 + _rnd.nextInt(30)).toDouble(),
           ts: ts,
+          userId: userId,
         ),
         VitalRecord(
           deviceId: _mockDeviceId,
           type: VitalType.spo2,
           value: (93 + _rnd.nextInt(7)).toDouble(),
           ts: ts,
+          userId: userId,
         ),
         VitalRecord(
           deviceId: _mockDeviceId,
           type: VitalType.temp,
           value: 36.2 + _rnd.nextDouble() * 1.5,
           ts: ts,
+          userId: userId,
         ),
         VitalRecord(
           deviceId: _mockDeviceId,
           type: VitalType.steps,
           value: (1000 + i * 15).toDouble(),
           ts: ts,
+          userId: userId,
         ),
         VitalRecord(
           deviceId: _mockDeviceId,
           type: VitalType.battery,
           value: (100 - i * 0.4).clamp(5, 100).toDouble(),
           ts: ts,
+          userId: userId,
         ),
       ]);
     }

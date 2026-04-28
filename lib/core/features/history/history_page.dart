@@ -5,17 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../i18n/locale.dart';
 import '../../storage/vitals_db.dart';
+import '../../storage/user_repository.dart';
 
 /// Pagina de istoric cu grafice pentru toate semnalele vitale.
 class HistoryPage extends ConsumerStatefulWidget {
   final String deviceId;
   final String? deviceName;
 
-  const HistoryPage({
-    super.key,
-    required this.deviceId,
-    this.deviceName,
-  });
+  const HistoryPage({super.key, required this.deviceId, this.deviceName});
 
   @override
   ConsumerState<HistoryPage> createState() => _HistoryPageState();
@@ -37,27 +34,29 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
   }
 
   Duration get _duration => switch (_range) {
-        _TimeRange.h1 => const Duration(hours: 1),
-        _TimeRange.h6 => const Duration(hours: 6),
-        _TimeRange.h24 => const Duration(hours: 24),
-        _TimeRange.d7 => const Duration(days: 7),
-      };
+    _TimeRange.h1 => const Duration(hours: 1),
+    _TimeRange.h6 => const Duration(hours: 6),
+    _TimeRange.h24 => const Duration(hours: 24),
+    _TimeRange.d7 => const Duration(days: 7),
+  };
 
   String _rangeLabel(_TimeRange r) => switch (r) {
-        _TimeRange.h1 => '1h',
-        _TimeRange.h6 => '6h',
-        _TimeRange.h24 => '24h',
-        _TimeRange.d7 => '7d',
-      };
+    _TimeRange.h1 => '1h',
+    _TimeRange.h6 => '6h',
+    _TimeRange.h24 => '24h',
+    _TimeRange.d7 => '7d',
+  };
 
   Future<void> _loadData() async {
     setState(() => _loading = true);
     final db = ref.read(vitalsDbProvider);
+    final userId = ref.read(userSessionProvider.notifier).userId;
     final now = DateTime.now();
     final from = now.subtract(_duration);
     final records = await db.query(
       deviceId: widget.deviceId,
       type: _selectedType,
+      userId: userId,
       from: from,
       to: now,
     );
@@ -100,13 +99,31 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
       unitKey: '%',
       titleKey: 'battery',
     ),
+    VitalType.bp: _VitalConfig(
+      icon: Icons.monitor_heart_rounded,
+      color: Colors.indigo,
+      unitKey: 'mmHg',
+      titleKey: 'bloodPressure',
+    ),
+    VitalType.hrv: _VitalConfig(
+      icon: Icons.insights_rounded,
+      color: Colors.purple,
+      unitKey: 'ms',
+      titleKey: 'hrv',
+    ),
+    VitalType.stress: _VitalConfig(
+      icon: Icons.psychology_rounded,
+      color: Colors.deepOrange,
+      unitKey: '',
+      titleKey: 'stress',
+    ),
   };
 
   @override
   Widget build(BuildContext context) {
     final t = T(ref.watch(localeProvider));
     final theme = Theme.of(context);
-    final config = _typeConfig[_selectedType]!;
+    final config = _typeConfig[_selectedType] ?? _typeConfig[VitalType.hr]!;
 
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
@@ -129,19 +146,28 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 children: VitalType.values.map((vt) {
-                  final c = _typeConfig[vt]!;
+                  final c = _typeConfig[vt];
+                  if (c == null) return const SizedBox.shrink();
                   final selected = vt == _selectedType;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: FilterChip(
                       selected: selected,
-                      avatar: Icon(c.icon, size: 16, color: selected ? Colors.white : c.color),
+                      avatar: Icon(
+                        c.icon,
+                        size: 16,
+                        color: selected ? Colors.white : c.color,
+                      ),
                       label: Text(t.tr(c.titleKey)),
                       selectedColor: c.color,
                       checkmarkColor: Colors.white,
                       labelStyle: TextStyle(
-                        color: selected ? Colors.white : theme.colorScheme.onSurface,
-                        fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                        color: selected
+                            ? Colors.white
+                            : theme.colorScheme.onSurface,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
                       ),
                       onSelected: (_) {
                         setState(() => _selectedType = vt);
@@ -193,28 +219,32 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _records.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.timeline_rounded,
-                                  size: 64,
-                                  color: theme.colorScheme.onSurface.withOpacity(0.3)),
-                              const SizedBox(height: 12),
-                              Text(
-                                t.tr('noHistoryData'),
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.5),
-                                ),
-                              ),
-                            ],
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.timeline_rounded,
+                            size: 64,
+                            color: theme.colorScheme.onSurface.withOpacity(0.3),
                           ),
-                        )
-                      : _VitalChart(
-                          records: _records,
-                          config: config,
-                          duration: _duration,
-                        ),
+                          const SizedBox(height: 12),
+                          Text(
+                            t.tr('noHistoryData'),
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(
+                                0.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _VitalChart(
+                      records: _records,
+                      config: config,
+                      duration: _duration,
+                    ),
             ),
           ),
 
@@ -266,10 +296,7 @@ class _VitalChart extends StatelessWidget {
 
     final theme = Theme.of(context);
     final spots = records
-        .map((r) => FlSpot(
-              r.ts.millisecondsSinceEpoch.toDouble(),
-              r.value,
-            ))
+        .map((r) => FlSpot(r.ts.millisecondsSinceEpoch.toDouble(), r.value))
         .toList();
 
     final minX = spots.first.x;
@@ -301,8 +328,12 @@ class _VitalChart extends StatelessWidget {
             ),
           ),
           titlesData: FlTitlesData(
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
+            rightTitles: const AxisTitles(
+              sideTitles: SideTitles(showTitles: false),
+            ),
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
@@ -352,10 +383,10 @@ class _VitalChart extends StatelessWidget {
                 show: spots.length < 60,
                 getDotPainter: (spot, percent, bar, index) =>
                     FlDotCirclePainter(
-                  radius: 2,
-                  color: config.color,
-                  strokeWidth: 0,
-                ),
+                      radius: 2,
+                      color: config.color,
+                      strokeWidth: 0,
+                    ),
               ),
               belowBarData: BarAreaData(
                 show: true,
@@ -369,7 +400,11 @@ class _VitalChart extends StatelessWidget {
                 final dt = DateTime.fromMillisecondsSinceEpoch(spot.x.toInt());
                 return LineTooltipItem(
                   '${spot.y.toStringAsFixed(1)}\n${DateFormat('HH:mm:ss').format(dt)}',
-                  TextStyle(color: config.color, fontWeight: FontWeight.w600, fontSize: 12),
+                  TextStyle(
+                    color: config.color,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
                 );
               }).toList(),
             ),
@@ -395,7 +430,11 @@ class _StatsRow extends StatelessWidget {
   final _VitalConfig config;
   final T t;
 
-  const _StatsRow({required this.records, required this.config, required this.t});
+  const _StatsRow({
+    required this.records,
+    required this.config,
+    required this.t,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -411,7 +450,12 @@ class _StatsRow extends StatelessWidget {
         children: [
           _StatChip(label: 'Min', value: minVal, config: config, theme: theme),
           const SizedBox(width: 8),
-          _StatChip(label: t.tr('average'), value: avg, config: config, theme: theme),
+          _StatChip(
+            label: t.tr('average'),
+            value: avg,
+            config: config,
+            theme: theme,
+          ),
           const SizedBox(width: 8),
           _StatChip(label: 'Max', value: maxVal, config: config, theme: theme),
           const SizedBox(width: 8),
@@ -553,8 +597,19 @@ class DateFormat {
 
   String format(DateTime dt) {
     final months = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return pattern
         .replaceAll('dd', dt.day.toString().padLeft(2, '0'))

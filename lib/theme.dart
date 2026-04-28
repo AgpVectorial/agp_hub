@@ -16,8 +16,6 @@ ThemeData appDarkTheme() {
     onSecondary: Colors.black,
     error: const Color(0xFFFF5252),
     onError: Colors.black,
-    background: kBlack,
-    onBackground: kOnBlack,
     surface: kSurface,
     onSurface: kOnSurface,
   );
@@ -130,6 +128,5 @@ ThemeData appDarkTheme() {
       displayColor: kOnSurface,
     ),
     iconTheme: const IconThemeData(color: kOnSurface),
-    useMaterial3: true,
   );
 }
